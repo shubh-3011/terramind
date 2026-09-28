@@ -3,7 +3,7 @@
 npm-debug.log
 Thumbs.db
 
-# TerraMind local configuration, source brief, and generated IaC artifacts
+# TerraMind local configuration and generated IaC artifacts
 .env
 .env.*
 !.env.example
@@ -16,16 +16,6 @@ credentials*
 .mypy_cache/
 .venv/
 venv/
-/PLAN.md
-/ARCHITECTURE.md
-/PROGRESS.md
-/TERRAMIND.md
-/docs/DATASET_AND_ML.md
-/docs/DECISIONS.md
-/docs/DEMO_AND_ACADEMICS.md
-/docs/GITHUB_SETUP.md
-/docs/FORK_BUILD.md
-/TerraMind_AI_Terraform_IDE_Project_Concept.pdf
 **/.terraform/*
 *.tfstate
 *.tfstate.*
