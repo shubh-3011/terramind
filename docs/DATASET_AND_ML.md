@@ -1,6 +1,6 @@
 # Dataset and ML protocol
 
-> **Status:** this document is the future evaluation protocol. TerraMind does not yet have a dataset pipeline, labeled corpus, trained model, or risk inference endpoint. Do not report ML scores until the grouped split and evaluation steps below are implemented and run.
+> **Status:** the first reproducible pipeline and experimental risk baseline are implemented in [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md): 46 generated AWS cases, 23 paired controls, and grouped out-of-fold metrics. This is a prototype only—not a validated production model. The larger corpus, independently reviewed labels, external validation, calibration, and richer evaluation below remain future work.
 
 ## Research question
 

@@ -72,11 +72,14 @@ Current synchronous response:
   "terraform_file_count":2,
   "parsed_file_count":2,
   "findings":[{"id":"main.tf:TM-NET-001:4","source":"terramind-rules","severity":"error","file":"main.tf","line":4,"rule_id":"TM-NET-001","message":"...","recommendation":"..."}],
-  "checks":{"hcl_parse":"completed","terraform_validate":"not_run: ...","tflint":"not_run: ...","checkov":"not_run: ...","ml_risk":"not_available: ..."}
+  "risk_prediction":{"source":"experimental-ml","model_version":"terraform-risk-iacsecbench-v1","label":"elevated_observed_control_risk","probability":0.72,"calibrated":false},
+  "checks":{"hcl_parse":"completed","terraform_validate":"not_run: ...","tflint":"not_run: ...","checkov":"not_run: ...","ml_risk":"experimental: terraform-risk-iacsecbench-v1"}
 }
 ```
 
-The current implementation uses `python-hcl2` to parse `.tf` files and two initial rules: `TM-NET-001` for public SSH ingress and `TM-IAM-001` for literal wildcard IAM actions. `TM-HCL-001` is a parser error. Findings are static heuristics, not Terraform provider validation, scanner results, or model predictions. File discovery excludes `.terraform`, `.git`, and `node_modules`, skips external symlink targets, and enforces file-count/size limits. It does not run `terraform init`, providers, `terraform validate`, TFLint, or Checkov.
+The current implementation uses `python-hcl2` to parse `.tf` files and deterministic rules: `TM-NET-001` public SSH ingress; `TM-IAM-001/002` wildcard actions/resources; `TM-S3-001/002` disabled S3 public-access protections/public ACLs; `TM-ECR-001` mutable image tags; `TM-EC2-001` optional IMDSv2 tokens; and `TM-EBS-001` explicit disabled EBS encryption. `TM-HCL-001` is a parser error. Findings are static heuristics, not Terraform provider validation, scanner results, or model predictions. File discovery excludes `.terraform`, `.git`, and `node_modules`, skips external symlink targets, and enforces file-count/size limits. It does not run `terraform init`, providers, `terraform validate`, TFLint, or Checkov.
+
+When a compatible model artifact exists and every Terraform file parses, the API returns a separate experimental estimate trained on a small, generated AWS control corpus. The estimate is uncalibrated, reports the training sample count, and may be absent when a file failed parsing or the artifact is missing. It predicts benchmark-control violation labels only—not cloud runtime outcomes.
 
 **Local-service security status:** the API currently accepts a workspace path from its local caller and does not yet implement a configured path allowlist. Bind it only to loopback for development. Add an explicit approved-root boundary and request authorization before enabling external-tool execution or exposing the service beyond the local machine.
 

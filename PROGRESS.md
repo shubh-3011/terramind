@@ -4,7 +4,7 @@ This file records real work, decisions, tests, and blockers and is included in t
 
 ## Status snapshot
 
-**Current phase:** M1 - Deterministic analyzer (first static-analysis slice implemented; tool integrations remain)
+**Current phase:** M1/M3 - Expanded static analyzer and experimental ML baseline (tool integrations and model validation remain)
 
 **Next build targets:** add workspace-root authorization and more fixture coverage; then integrate Terraform/TFLint/Checkov safely. Separately unblock the Code-OSS native build and launch.
 
@@ -142,7 +142,47 @@ This file records real work, decisions, tests, and blockers and is included in t
 - No actual Terraform validate/format, TFLint, Checkov, cost/rating engine, LLM generation, repair, or trained ML model is wired in.
 - Full Code-OSS app build/launch remains blocked on native Windows prerequisites.
 
+### 2026-09-28 - Expand AWS rules and train a pinned risk baseline
+
+**Implemented**
+
+- Expanded deterministic AWS findings to cover S3 public-access-block flags and public ACLs, mutable ECR tags, optional EC2 IMDSv2 tokens, explicitly unencrypted EBS, and IAM wildcard resource targets, alongside HCL, public SSH, and wildcard IAM actions.
+- Added static expansion of dynamic security-group ingress when it is driven by literal lists/locals, plus an informational finding when dynamic inputs cannot be resolved. This avoids treating unknown values as safe.
+- Gathered a small, pinned public benchmark source: IaCSecBench at commit `6e359ac29dcde1974d792f454e1a48dfd9deeaa6` (MIT). Used only generated, labeled AWS cases; excluded Kubernetes and cases with unclear provenance. Kept raw HCL out of TerraMind; committed only 46 derived numeric feature rows, source/control identifiers, and provenance.
+- Added a versioned feature extractor and a logistic-regression training pipeline. Case IDs/control IDs/comments are excluded from model features; vulnerable/compliant pairs stay together under five-fold GroupKFold.
+- Exported a portable JSON model and integrated inference into `/v1/analyze` and the TerraMind panel. The UI labels it experimental and uncalibrated and shows its 46-example training size.
+- Recorded exact training metrics and the limitations in `docs/TRAINING_AND_MODEL.md`; the model estimates benchmark-control violations only, not production outages, cost, uptime, or deployment success.
+
+**Validation performed**
+
+- Analyzer and ML tests in the analyzer virtual environment: 11 passed, including resolved and unresolved dynamic ingress.
+- Dataset reproduced from the pinned IaCSecBench checkout: 46 AWS examples, 23 complete pairs.
+- Grouped out-of-fold balanced accuracy: 0.674; PR-AUC: 0.764. Dummy-prior balanced accuracy: 0.500. These are small-sample exploratory results, not a performance claim.
+- Re-trained the portable model from the generated CSV; model training and inference tests pass.
+- TerraMind extension compile: 0 TypeScript errors.
+- Analyzer package built/installed in an isolated virtual environment and imported successfully.
+
+**Still incomplete / safety follow-up**
+
+- Terraform provider validation, TFLint, Checkov, path allowlisting, prompt generation, and repair remain unimplemented.
+- The model is not calibrated and has no independent labeled repository holdout or human-reviewed expanded corpus; do not use it for real cloud decisions.
+- Full Code-OSS desktop launch remains unverified due the previously recorded native Windows build prerequisites.
+
 **GitHub delivery**
 
 - Pushed analyzer feature commit `3044361d` and project documentation/brief commit `ef667084` to the private repository's `main` branch.
 - Verified `main` includes `PLAN.md`, `ARCHITECTURE.md`, `PROGRESS.md`, all TerraMind `docs/*.md`, and the supplied concept PDF. The repository remains private.
+
+### 2026-09-28 - Dynamic ingress coverage and integration retest
+
+**Implemented and verified**
+
+- Expanded literal `dynamic "ingress"` blocks driven by local lists for both deterministic SSH analysis and numeric ML features. Unresolvable `for_each` inputs now produce informational review finding `TM-NET-003`; unknown values are not treated as safe.
+- Rebuilt the pinned 46-row derived dataset and retrained the exported model after the feature logic change. The refreshed dataset checksum is recorded in the manifest; grouped OOF balanced accuracy is 0.674 and PR-AUC is 0.764.
+- Analyzer/ML suite: 11 passed; Python compile check passed.
+- End-to-end API request against the benchmark's vulnerable dynamic-ingress example parsed both Terraform files, emitted `TM-NET-001`, and returned the separate experimental estimate.
+- `npm run gulp -- compile-extension:terramind-core`: 0 TypeScript errors.
+
+**Still incomplete**
+
+- Full Code-OSS desktop build and launch are unverified due native Windows build prerequisites. The model remains small, uncalibrated, and benchmark-control scoped; more independently labeled data and external validation are required.

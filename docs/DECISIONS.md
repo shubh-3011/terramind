@@ -41,3 +41,9 @@ Start with one binary risk model (risk/failure probability). Failure-category cl
 **Status:** accepted; first slice implemented.
 
 Use HCL parsing and transparent deterministic rules before invoking provider plugins or external scanners. Mark every check as completed, skipped, or unavailable. Never imply that current heuristics equal `terraform validate`, Checkov, TFLint, cost estimates, uptime guarantees, or an ML prediction.
+
+## D-008: Train a separate, conservative risk estimator
+
+**Status:** accepted; experimental prototype trained.
+
+Use a traditional, inspectable classifier over versioned numeric features rather than fine-tuning a foundation model on a tiny corpus. The initial logistic model uses a pinned, MIT-licensed controlled corpus, excludes case identifiers/comments from features, and groups paired variants during cross-validation. Label its output as experimental and uncalibrated; do not equate a benchmark-control violation score with deployment failure, uptime, scalability, or cost.

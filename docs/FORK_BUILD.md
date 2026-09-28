@@ -40,6 +40,7 @@ It is acceptable to implement part of the product feature as a **bundled interna
 - Code-OSS source snapshot imported and Microsoft VS Code retained as `upstream` remote.
 - TerraMind product identity and internal contribution are present.
 - Analyzer API and first-pass Analyze command are present: HCL parse, public SSH/wildcard IAM rules, and Problems diagnostics.
+- A compact, grouped-evaluation experimental logistic model is available; it is not a general Terraform code-generation model or production predictor.
 - Full Code-OSS install/build/launch is **not verified**; native Windows build dependencies remain outstanding.
 
 ## Next technical milestones

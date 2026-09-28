@@ -1,6 +1,6 @@
 # TerraMind implementation blueprint
 
-> **Live status (2026-09-28):** The private Code-OSS source snapshot and TerraMind identity scaffold are in place. The first usable analyzer slice is implemented: HCL syntax parsing, two deterministic security rules, an API report, and VS Code Problems diagnostics. The desktop app is not yet build-verified. See [PROGRESS.md](PROGRESS.md) for tested work and blockers.
+> **Live status (2026-09-28):** The private Code-OSS source snapshot, TerraMind identity, analyzer first slice, and bundled editor diagnostics are in place. An experimental logistic-regression baseline is trained on 46 generated AWS control cases with pair-grouped cross-validation; it is explicitly not production-ready. The desktop app remains unverified. See [PROGRESS.md](PROGRESS.md) and [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md).
 
 ## 1. Refined problem statement
 
@@ -18,7 +18,7 @@ Terraform authoring tools help with syntax, but generated or hand-written infras
 
 ## 3. Exact MVP scope
 
-**In (target MVP):** a branded Code-OSS fork named TerraMind, Terraform HCL, AWS-focused projects, built-in TerraMind workbench features, local FastAPI service, local Ollama model, `terraform fmt`/`validate`, guarded `plan`, TFLint, Checkov, deterministic finding aggregation, feature extraction, one binary risk model, explanation and patch proposal, patch preview, re-test. **Current implementation is an early slice:** HCL parsing and initial SSH/IAM heuristics only; no Terraform CLI/scanners/LLM/ML are wired in yet.
+**In (target MVP):** a branded Code-OSS fork named TerraMind, Terraform HCL, AWS-focused projects, built-in TerraMind workbench features, local FastAPI service, local Ollama model, `terraform fmt`/`validate`, guarded `plan`, TFLint, Checkov, deterministic finding aggregation, feature extraction, one binary risk model, explanation and patch proposal, patch preview, re-test. **Current implementation is partial:** HCL parsing and initial SSH/IAM heuristics plus a small experimental logistic baseline; Terraform CLI/scanners/LLM integration and production-quality ML validation remain open.
 
 **Out:** automatic cloud deployment, multi-cloud support, cost optimization, Kubernetes, Pulumi, CloudFormation, autonomous multi-file edits without review, failure-category model, quality-score model, graph visualization, and production-scale hosted service.
 
@@ -100,9 +100,9 @@ The required model predicts binary risk/failure probability. Compare logistic re
 | Milestone | Deliverable | Exit criteria |
 | --- | --- | --- |
 | M0 - Fork foundation | Clone/pin Code-OSS, TerraMind product branding, build prerequisites, tool preflight | Source snapshot and branding exist; development build still blocked/unverified by Windows native dependencies. |
-| M1 - Deterministic analyzer | HCL parse diagnostics, bounded workspace scan, report schema, tested rules, then Terraform/TFLint/Checkov adapters | Current slice passes its API tests; complete tool adapters and broadened fixtures remain. |
-| M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Reproducible dataset build; grouped split manifest. |
-| M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Holdout metrics and limitations are saved and reproducible. |
+| M1 - Deterministic analyzer | HCL parse diagnostics, bounded workspace scan, report schema, tested rules, then Terraform/TFLint/Checkov adapters | HCL/static slice passes tests; CLI/scanner integrations and broader rules remain. |
+| M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS feature dataset builds reproducibly; larger independently sourced data remains needed. |
+| M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Experimental logistic baseline, grouped OOF metrics, and portable model artifact exist; no calibration or external validation. |
 | M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze a workspace and navigate to findings. |
 | M5 - Local AI workflow | Ollama adapter, grounded generation/explanation/patch proposal | Previewed patch is user-approved and re-tested. |
 | M6 - Demo hardening | Demo fixtures, tests, screenshots/video, presentation | Repeatable 5-7 minute demo from a clean setup. |

@@ -6,8 +6,8 @@ TerraMind is an experimental, private **Code-OSS fork** for Terraform authors. T
 
 This is an early prototype, not a finished editor or production security product.
 
-- Implemented: TerraMind product identity, bundled activity-bar contribution, Analyze Workspace command, local FastAPI API, HCL syntax parsing, first-pass public-SSH and wildcard-IAM findings, and VS Code Problems diagnostics.
-- Not implemented: Terraform CLI/provider validation, TFLint, Checkov, cost/availability/scalability ratings, prompt-to-Terraform generation, Ollama integration, trained risk model, or repair proposals.
+- Implemented: TerraMind product identity, bundled activity-bar contribution, Analyze Workspace command, local FastAPI API, HCL syntax parsing, initial SSH/IAM/S3/ECR/EC2/EBS static rules, VS Code Problems diagnostics, and an experimental grouped-evaluation logistic-regression risk estimate.
+- Not implemented: Terraform provider validation, TFLint, Checkov, cost/availability/scalability ratings, prompt-to-Terraform generation, Ollama integration, or repair proposals. The model is trained on only 46 controlled AWS cases and is not suitable for production decisions.
 - Build status: TerraMind contribution compiles. A complete Code-OSS app build and launch are not yet verified because Windows native dependencies are incomplete.
 
 See [PLAN.md](PLAN.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [PROGRESS.md](PROGRESS.md) for the roadmap, design contracts, and verified progress.
@@ -31,12 +31,14 @@ To run the analyzer API tests:
 python -m pytest -q
 ```
 
+The experimental dataset/model workflow and its limits are documented in [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md). The risk estimate is distinct from scanner findings and is not calibrated.
+
 ## Code-OSS development build
 
 TerraMind uses the upstream Code-OSS build system and toolchain. Follow [docs/FORK_BUILD.md](docs/FORK_BUILD.md) and Microsoft's [Code-OSS contributor guide](https://github.com/microsoft/vscode/wiki/How-to-Contribute). The full application build has not yet been validated on the current Windows machine.
 
 ## Safety and scope
 
-TerraMind does not deploy infrastructure and must never run `terraform apply`. Findings are evidence-tagged; static heuristics are not provider validation or guarantees about runtime security, uptime, scalability, or cost. Generated Terraform, when implemented, must be analyzed and previewed before any user-approved workspace change.
+TerraMind does not deploy infrastructure and must never run `terraform apply`. Findings are evidence-tagged; static heuristics and the experimental model are not provider validation or guarantees about runtime security, uptime, scalability, or cost. Generated Terraform, when implemented, must be analyzed and previewed before any user-approved workspace change.
 
 The Code-OSS base is distributed under its included MIT license and notices. Review upstream attribution and applicable licenses before redistribution.
