@@ -1,0 +1,78 @@
+{
+	"name": "terramind-core",
+	"displayName": "%displayName%",
+	"description": "%description%",
+	"version": "0.0.1",
+	"publisher": "terramind",
+	"license": "MIT",
+	"private": true,
+	"engines": {
+		"vscode": "^1.140.0"
+	},
+	"extensionKind": [
+		"ui"
+	],
+	"activationEvents": [
+		"onCommand:terramind.analyzeWorkspace",
+		"onCommand:terramind.generateInfrastructure",
+		"onCommand:terramind.openDashboard"
+	],
+	"main": "./out/extension",
+	"scripts": {
+		"compile": "node ./node_modules/vscode/bin/compile -p ./",
+		"vscode:prepublish": "node ../../node_modules/gulp/bin/gulp.js --gulpfile ../../build/gulpfile.extensions.mjs compile-extension:terramind-core"
+	},
+	"devDependencies": {
+		"@types/node": "24.x"
+	},
+	"contributes": {
+		"commands": [
+			{
+				"command": "terramind.analyzeWorkspace",
+				"title": "%command.analyzeWorkspace%",
+				"category": "TerraMind"
+			},
+			{
+				"command": "terramind.generateInfrastructure",
+				"title": "%command.generateInfrastructure%",
+				"category": "TerraMind"
+			},
+			{
+				"command": "terramind.openDashboard",
+				"title": "%command.openDashboard%",
+				"category": "TerraMind"
+			}
+		],
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "terramind",
+					"title": "%viewContainer.title%",
+					"icon": "resources/terramind-view.svg"
+				}
+			]
+		},
+		"views": {
+			"terramind": [
+				{
+					"id": "terramind.dashboard",
+					"name": "%view.dashboard%"
+				}
+			]
+		},
+		"configuration": {
+			"title": "%configuration.title%",
+			"properties": {
+				"terramind.analyzerUrl": {
+					"type": "string",
+					"default": "http://127.0.0.1:8000",
+					"description": "%configuration.analyzerUrl%"
+				}
+			}
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/shubh-3011/terramind.git"
+	}
+}

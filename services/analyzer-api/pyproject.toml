@@ -1,0 +1,12 @@
+[project]
+name = "terramind-analyzer-api"
+version = "0.0.1"
+description = "Local analysis service for the TerraMind Code-OSS fork."
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.30,<1.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
