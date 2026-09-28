@@ -12,6 +12,7 @@ Thumbs.db
 credentials*
 **/__pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .venv/
@@ -28,9 +29,7 @@ override.tf.json
 *_override.tf.json
 data/raw/
 data/interim/
-data/processed/
 models/*.joblib
-models/*.json
 runs/
 mlruns/
 tmp/

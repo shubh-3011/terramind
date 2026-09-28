@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "terramind-analyzer-api"
 version = "0.0.1"
@@ -12,8 +16,13 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "httpx>=0.27,<1.0",
-    "pytest>=8,<10"
+    "pytest>=8,<10",
+    "scikit-learn>=1.6,<2"
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "terramind_ml*"]

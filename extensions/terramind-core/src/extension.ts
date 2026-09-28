@@ -10,6 +10,8 @@ interface AnalysisResult {
 	readonly parsed_file_count: number;
 	readonly status: string;
 	readonly findings: readonly AnalysisFinding[];
+	readonly risk_prediction: RiskPrediction | null;
+	readonly risk_prediction_reason: string | null;
 }
 
 interface AnalysisFinding {
@@ -23,16 +25,27 @@ interface AnalysisFinding {
 	readonly recommendation?: string;
 }
 
+interface RiskPrediction {
+	readonly source: string;
+	readonly model_version: string;
+	readonly label: string;
+	readonly probability: number;
+	readonly calibrated: boolean;
+	readonly training_samples: number;
+}
+
 class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
 	private readonly _onDidChangeTreeData = new vscode.EventEmitter<void>();
 	readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
 	private analyzerStatus = 'Analyzer Not Checked';
 	private workspaceStatus = 'No Analysis Run';
+	private riskStatus = 'Not Available';
 
-	refresh(analyzerStatus: string, workspaceStatus: string): void {
+	refresh(analyzerStatus: string, workspaceStatus: string, riskStatus: string): void {
 		this.analyzerStatus = analyzerStatus;
 		this.workspaceStatus = workspaceStatus;
+		this.riskStatus = riskStatus;
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -44,7 +57,7 @@ class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeI
 		return [
 			this.createItem('TerraMind Analyzer', this.analyzerStatus, 'server'),
 			this.createItem('Terraform Workspace', this.workspaceStatus, 'file-code'),
-			this.createItem('Security Rating', 'Available After Analysis', 'shield'),
+			this.createItem(vscode.l10n.t('Experimental Risk Estimate'), this.riskStatus, 'shield'),
 			this.createItem('Reliability Rating', 'Available After Analysis', 'pulse'),
 			this.createItem('Scalability Rating', 'Available After Analysis', 'graph')
 		];
@@ -112,12 +125,18 @@ export function activate(context: vscode.ExtensionContext): void {
 				const workspaceStatus = result.terraform_file_count > 0
 					? vscode.l10n.t('{0} files · {1} findings', result.terraform_file_count, result.findings.length)
 					: vscode.l10n.t('No Terraform Files Found');
-				dashboard.refresh(vscode.l10n.t('Connected'), workspaceStatus);
+				const riskStatus = result.risk_prediction
+					? vscode.l10n.t('{0}% · uncalibrated · n={1}', Math.round(result.risk_prediction.probability * 100), result.risk_prediction.training_samples)
+					: result.risk_prediction_reason ?? vscode.l10n.t('Not Available');
+				dashboard.refresh(vscode.l10n.t('Connected'), workspaceStatus, riskStatus);
 				const errors = result.findings.filter(finding => finding.severity === 'error').length;
 				const warnings = result.findings.filter(finding => finding.severity === 'warning').length;
 				output.appendLine(`Analysis status=${result.status}; parsed=${result.parsed_file_count}/${result.terraform_file_count}; errors=${errors}; warnings=${warnings}`);
 				for (const finding of result.findings) {
 					output.appendLine(`${finding.severity.toUpperCase()} ${finding.rule_id} ${finding.file}${finding.line ? `:${finding.line}` : ''}: ${finding.message}`);
+				}
+				if (result.risk_prediction) {
+					output.appendLine(`EXPERIMENTAL ML control-risk estimate=${(result.risk_prediction.probability * 100).toFixed(1)}%; samples=${result.risk_prediction.training_samples}; model=${result.risk_prediction.model_version}; calibrated=${result.risk_prediction.calibrated}`);
 				}
 				await vscode.window.showInformationMessage(vscode.l10n.t(
 					'TerraMind parsed {0}/{1} Terraform files and found {2} error(s), {3} warning(s).',
@@ -125,7 +144,7 @@ export function activate(context: vscode.ExtensionContext): void {
 				));
 			} catch (error) {
 				diagnostics.clear();
-				dashboard.refresh(vscode.l10n.t('Unavailable'), vscode.l10n.t('Analysis Not Run'));
+				dashboard.refresh(vscode.l10n.t('Unavailable'), vscode.l10n.t('Analysis Not Run'), vscode.l10n.t('Not Available'));
 				output.appendLine(`Analyzer request failed: ${getErrorMessage(error)}`);
 				output.show(true);
 				await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not reach the local analyzer. Start the analyzer service and try again.'));
