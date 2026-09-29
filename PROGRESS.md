@@ -1,24 +1,45 @@
 # TerraMind progress log
 
+> **Current status (2026-09-29):** the branch now includes opt-in scanner adapters, local Ollama generation with review-before-save UX, evidence-based/unknown service ratings, and an attributed AWS SFT data pipeline. API/data suite: 22 passing; extension compile: 0 TypeScript errors. A real local Ollama request returned HCL accepted by the parser. This is syntax-only validation; semantic/provider validation and generative fine-tuning remain incomplete. The prepared corpus contains 43,561 training and 2,229 validation rows after filtering. The project estimate is 60–65%; full desktop packaging and validated fine-tuning remain blockers to 65–70%.
+
 This file records real work, decisions, tests, and blockers and is included in the private GitHub repository by owner decision. Add an entry for each meaningful work session; do not claim unrun tests or unimplemented features.
 
 ## Status snapshot
 
 **Current phase:** M1/M3/M6 - Analyzer and model quality work, plus Windows/Linux alpha packaging pipeline (CI artifacts still need a successful hosted run)
 
-**Next build targets:** run the new model reproducibility and Windows/Linux packaging workflows on `testing`; fix actionable failures; verify the packaged editor and then wire in a bundled analyzer service. Expand analyzer integrations (workspace authorization, Terraform/TFLint/Checkov) before treating packages as end-user ready. Do not merge to `main` until the PR's required checks pass; macOS billing and Microsoft-only runner configuration remain external blockers for upstream CI.
+**Next build targets:** verify hosted Windows/Linux package results and PR checks; add approved-workspace boundaries for external tools; train/evaluate a small adapter in a license-compatible CUDA environment; and validate generated modules with Terraform/provider schemas. Do not merge to `main` until required checks pass; macOS billing and Microsoft-only runner configuration remain external blockers for the upstream matrix.
 
-**Overall estimate:** roughly 35–40% of the agreed MVP scope is implemented, based on the milestones below—not a schedule forecast. The analyzer/model foundation exists, while Terraform tool integrations, complete workbench UX, generation/repair, and desktop packaging/build verification remain major unfinished work.
+**Overall estimate:** roughly 60–65% of the agreed MVP scope is implemented, based on milestones below—not a schedule forecast. This reflects working local generation, scanner adapters, rating output, and reproducible data preparation. It does not imply production readiness; fine-tuning, repair, provider-aware validation, workspace authorization, and verified desktop packaging remain.
 
 | Milestone | Status | Evidence / remaining work |
 | --- | --- | --- |
 | M0 - Fork foundation | Partial | TerraMind identity and bundled contribution exist; Windows/Linux preview package workflows are configured, but no successful package output or launch is verified. |
-| M1 - Deterministic analyzer | Partial | HCL parsing, AWS heuristic rules, API tests, and Problems diagnostics; Terraform validate/TFLint/Checkov and workspace authorization remain. |
-| M2 - Dataset pipeline | Partial | Reproducible, pinned 46-row AWS derived dataset; broader independently sourced/human-reviewed corpus remains. |
+| M1 - Deterministic analyzer | Partial | HCL parsing, AWS heuristic rules, opt-in CLI/scanner adapters, API tests, and Problems diagnostics; workspace authorization and live tool tests remain. |
+| M2 - Dataset pipeline | Partial | Pinned 46-row AWS risk dataset plus a license-aware SFT preparation pipeline; locally prepared 43,561 train / 2,229 validation rows; larger independent risk labels remain. |
 | M3 - ML baseline | Partial | Grouped OOF logistic baseline, pair-group bootstrap intervals, and portable inference; tiny sample, no external holdout. |
-| M4 - Native workbench UX | Partial | Analyze command and initial activity-bar/Problems integration; full analysis panel, ratings, and generation dialog remain. |
-| M5 - Local AI workflow | Not started | Ollama generation, grounded explanations, repair diff/preview, and approval flow are absent. |
-| M6 - Demo hardening | Partial | API fixtures/tests and reproducible model evaluation exist; clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+| M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview and explicit save, per-service evidence ratings; runtime UI tests remain. |
+| M5 - Local AI workflow | Partial | Ollama generation API and preview/save integration; one real local inference produced HCL accepted by the syntax parser. Fine-tuning, semantic validation, explanations, and repair remain. |
+| M6 - Demo hardening | Partial | 22 API/data tests and reproducible model evaluation exist; clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+
+### 2026-09-29 - Local generation, evidence ratings, tools, and SFT preparation
+
+**Implemented and verified locally**
+
+- Added a loopback-only Ollama generation route with model selection, prompt/output bounds, HCL parse gate, and no filesystem writes. Extension flow previews output and requires explicit in-workspace save confirmation.
+- Confirmed a real request against local `qwen2.5-coder:3b` returned HTTP 200 and parser-accepted HCL. This proves the request path works, not Terraform provider correctness or safe infrastructure design.
+- Added per-service security summaries based on concrete rule evidence. Cost, reliability, scalability, and maintainability remain `insufficient_information` instead of fabricated scores.
+- Added opt-in `terraform fmt`, preinitialized `terraform validate`, TFLint, and Checkov runner. External tool invocation is disabled by default; no `init`, `plan`, or `apply` is run.
+- Prepared the pinned public generation corpus locally: 43,561 AWS training rows and 2,229 validation rows passed license/HCL filters, with repository-disjoint split assertion and attribution manifest. Dataset/model artifacts stay out of Git.
+- Added 22 passing analyzer/data tests; the bundled extension compiles with 0 TypeScript errors.
+- Fixed Linux and Darwin PR workflows to invoke the non-executable tracked `scripts/test.sh` through `bash`.
+
+**Not completed / risks**
+
+- No TerraMind generative adapter has been fine-tuned. The downloaded Qwen2.5-Coder model is pretrained; review its research/non-commercial license before any commercial use or model redistribution.
+- A small sample of generated HCL was syntax-parsed only. Run Terraform schema validation in a trusted, provider-initialized test fixture before treating output as usable.
+- Current Python PyTorch is CPU-only; no CUDA training stack has been installed or training run performed.
+- Windows/Linux desktop artifacts and new GitHub checks need hosted verification. Do not merge until required checks are green; runner spending limits can block matrix jobs.
 
 ## Log
 
@@ -250,3 +271,27 @@ This file records real work, decisions, tests, and blockers and is included in t
 - No main-branch merge is claimed. The feature branch must pass its ML and package workflows and applicable PR checks first.
 - The first hosted `testing` run found two fixable workflow issues: the dataset comparison used a repository-root path while running from `services/analyzer-api`, and packaging did not apply Code-OSS's Linux native-build environment before `npm ci` (the install stopped at `native-keymap`). The next run confirmed the rebuilt dataset matched in content but differed in platform line endings; comparison now normalizes CRLF/LF. Linux/Windows dependency setup is aligned with the repo's platform build helpers. Reruns are pending; neither package is claimed successful yet.
 - A subsequent hosted Linux build reached Code-OSS's libc++ setup but revealed that setup also depends on build-tool packages (`build/node_modules/debug`). Added the upstream workflow's separate `npm ci` in `build/` before Linux setup; the next hosted run will verify that sequencing.
+
+### 2026-09-29 - Add local generation, opt-in analysis tools, and an attributed SFT data path
+
+**Implemented on `testing` (not yet merged)**
+
+- Added `POST /v1/generate` backed only by a loopback Ollama endpoint. It bounds input/output sizes, parses returned HCL, reports syntax-only validation scope, rejects non-loopback configured URLs, and never writes a file.
+- Replaced prompt-capture placeholder with a built-in Generate flow: collect requirement and constraints; open a draft preview; save only when the user explicitly chooses a path inside the open workspace; confirm overwrite separately; then run Analyze. Added configurable local model default `qwen2.5-coder:3b`.
+- Added opt-in integrations for Terraform `fmt`, `validate` only when provider initialization already exists, TFLint, and Checkov. They are disabled by default; TerraMind never runs `init`, `plan`, or `apply`. Child processes have bounded runtime/output, run without shell, use an isolated home, and receive no cloud credential variables. Provider plugins may execute during `terraform validate`, so users must trust the workspace before opting in.
+- Added pinned SFT corpus preparation for the AWS slice of `SASVAAI/terraform-multicloud` at revision `dced854e79a6aadb89f12b3ba74b31720264ea40`. The script filters unlicensed/unparseable/non-AWS entries, preserves per-row repository/license provenance, checks train/validation repo disjointness, writes data only to the selected folder (documented `.build`), and emits hashes plus `ATTRIBUTION.csv`. This is a generation corpus, not risk labels.
+- Updated the TerraMind-owned plan, architecture, data, training, build, demo, decision, and progress documents to keep implementation claims aligned.
+
+**Validation performed**
+
+- Analyzer, model, generation-route, scanner-adapter, and SFT-data tests: 19 passed.
+- `npm run gulp -- compile-extension:terramind-core`: 0 TypeScript errors.
+- SFT filtering tests cover AWS-only selection, permissive-license allowlist, HCL parse, repository split leakage, and attribution metadata.
+- Live Ollama inference is not verified: Ollama CLI exists but no local model/server is running. Installed system Python is CPU-only despite an RTX 4060 8 GB GPU; no generative fine-tuning run or adapter is claimed.
+- Latest Windows/Linux Actions package jobs remain in progress at last inspection; no desktop artifact is yet verified. Main branch has not been updated.
+
+**Current estimate and remaining blockers**
+
+- Updated scope coverage estimate: 55–60%, not yet the requested 65–70%. This is a milestone-coverage estimate, not a quality or schedule claim.
+- To reach a credible 65–70% milestone, next add evidence-backed rating output (especially explicit insufficient-information states for cost/reliability/scalability), make the local model run end-to-end, and verify the desktop build/package path. A real fine-tuned generator needs a compatible CUDA training stack, training time, and an evaluation set separate from the training corpus.
+- Six PRs were open at the start of this work: TerraMind #6 and five Dependabot updates. Do not merge any until relevant checks are green; existing GitHub runner/billing limitations may prevent clearing every inherited Code-OSS matrix check.

@@ -1,4 +1,6 @@
 from fastapi.testclient import TestClient
+from unittest.mock import patch
+import json
 
 from app.main import app
 from terramind_ml.features import extract_features
@@ -184,3 +186,154 @@ def test_analyze_enforces_workspace_file_limit(tmp_path):
 def test_analyze_rejects_missing_workspace(tmp_path):
     response = client.post("/v1/analyze", json={"workspace_path": str(tmp_path / "missing")})
     assert response.status_code == 400
+
+
+def test_generate_returns_parseable_hcl_without_writing_files(tmp_path):
+    class OllamaResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps({
+                "model": "qwen2.5-coder:3b",
+                "response": 'terraform { required_version = ">= 1.5" }',
+            }).encode("utf-8")
+
+    class OllamaOpener:
+        def open(self, *_args, **_kwargs):
+            return OllamaResponse()
+
+    with patch("app.main.urllib.request.build_opener", return_value=OllamaOpener()):
+        response = client.post("/v1/generate", json={"description": "Create a private S3 bucket"})
+
+    assert response.status_code == 200
+    assert response.json()["syntax_valid"] is True
+    assert response.json()["model"] == "qwen2.5-coder:3b"
+    assert "not verified" in response.json()["validation_scope"]
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_generate_rejects_unparseable_model_output():
+    class OllamaResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps({"response": "resource { invalid"}).encode("utf-8")
+
+    class OllamaOpener:
+        def open(self, *_args, **_kwargs):
+            return OllamaResponse()
+
+    with patch("app.main.urllib.request.build_opener", return_value=OllamaOpener()):
+        response = client.post("/v1/generate", json={"description": "Create a private S3 bucket"})
+
+    assert response.status_code == 422
+    assert "nothing was written" in response.json()["detail"]
+
+
+def test_generate_rejects_non_loopback_ollama_url(monkeypatch):
+    monkeypatch.setenv("TERRAMIND_OLLAMA_URL", "http://192.0.2.5:11434")
+
+    response = client.post("/v1/generate", json={"description": "Create a private S3 bucket"})
+
+    assert response.status_code == 503
+
+
+def test_generate_rejects_url_credentials_that_could_escape_loopback(monkeypatch):
+    monkeypatch.setenv("TERRAMIND_OLLAMA_URL", "http://127.0.0.1:11434@attacker.example")
+
+    response = client.post("/v1/generate", json={"description": "Create a private S3 bucket"})
+
+    assert response.status_code == 503
+
+
+def test_external_checks_are_explicitly_opt_in(tmp_path):
+    (tmp_path / "main.tf").write_text('terraform { required_version = ">= 1.5" }', encoding="utf-8")
+
+    response = client.post("/v1/analyze", json={"workspace_path": str(tmp_path)})
+
+    assert response.status_code == 200
+    assert response.json()["checks"]["tflint"].startswith("not_run: external tools disabled")
+
+
+def test_external_tools_map_json_findings_and_hide_cloud_credentials(tmp_path, monkeypatch):
+    import subprocess
+
+    (tmp_path / "main.tf").write_text('terraform { required_version = ">= 1.5" }', encoding="utf-8")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "must-not-reach-a-tool")
+
+    def fake_which(name):
+        return {"tflint": "C:/tools/tflint.exe", "checkov": "C:/tools/checkov.exe"}.get(name)
+
+    def fake_run(command, **kwargs):
+        assert kwargs["shell"] is False
+        assert "AWS_ACCESS_KEY_ID" not in kwargs["env"]
+        if command[0].endswith("tflint.exe"):
+            output = json.dumps({
+                "issues": [{
+                    "rule": {"name": "terraform_required_version"},
+                    "message": "Set a required version",
+                    "severity": "WARNING",
+                    "range": {"filename": "main.tf", "start": {"line": 1}},
+                }],
+            })
+        else:
+            output = json.dumps({"results": {"failed_checks": [{
+                "check_id": "CKV_AWS_18",
+                "check_name": "Ensure access logging is enabled",
+                "severity": "MEDIUM",
+                "file_path": "main.tf",
+                "file_line_range": [1, 1],
+            }]}})
+        return subprocess.CompletedProcess(command, 1, output, "")
+
+    with patch("app.tool_runner.shutil.which", side_effect=fake_which), patch(
+        "app.tool_runner.subprocess.run", side_effect=fake_run
+    ):
+        response = client.post("/v1/analyze", json={
+            "workspace_path": str(tmp_path), "run_external_tools": True,
+        })
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["checks"]["tflint"] == "completed: 1 issue(s)"
+    assert report["checks"]["checkov"] == "completed: 1 failed check(s)"
+    assert {finding["source"] for finding in report["findings"]} == {"tflint", "checkov"}
+
+
+def test_service_rating_cites_static_evidence_and_does_not_invent_unknown_scores(tmp_path):
+    (tmp_path / "storage.tf").write_text(
+        '''resource "aws_s3_bucket_acl" "public" {
+  bucket = "example"
+  acl    = "public-read"
+}
+''',
+        encoding="utf-8",
+    )
+
+    response = client.post("/v1/analyze", json={"workspace_path": str(tmp_path)})
+
+    assert response.status_code == 200
+    s3 = next(item for item in response.json()["service_ratings"] if item["service"] == "s3")
+    assert s3["dimensions"]["security"]["score"] == 65
+    assert s3["dimensions"]["security"]["status"] == "limited"
+    assert s3["dimensions"]["security"]["evidence_finding_ids"]
+    assert s3["dimensions"]["cost"]["score"] is None
+    assert s3["dimensions"]["cost"]["status"] == "insufficient_information"
+
+
+def test_service_rating_does_not_treat_no_findings_as_perfect_security(tmp_path):
+    (tmp_path / "storage.tf").write_text('resource "aws_s3_bucket" "example" {}', encoding="utf-8")
+
+    response = client.post("/v1/analyze", json={"workspace_path": str(tmp_path)})
+
+    s3 = next(item for item in response.json()["service_ratings"] if item["service"] == "s3")
+    assert s3["dimensions"]["security"]["score"] is None
+    assert s3["dimensions"]["security"]["status"] == "insufficient_information"

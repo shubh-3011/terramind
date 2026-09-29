@@ -37,23 +37,23 @@ It is acceptable to implement part of the product feature as a **bundled interna
 
 ## Current implementation status (2026-09-29)
 
-The current MVP is estimated at roughly 35–40% complete by milestone coverage. The workbench's analyzer/ML foundation is in place, but there is no full desktop build, generation/repair flow, or packaged release yet. See the milestone breakdown in [PROGRESS.md](../PROGRESS.md).
+The current MVP is estimated at roughly 60–65% complete by milestone coverage. Local inference, scanner adapters, evidence ratings, and dataset preparation are implemented, but generative fine-tuning, provider-aware validation, repair, and full desktop build validation remain. See [PROGRESS.md](../PROGRESS.md).
 
 - Code-OSS source snapshot imported and Microsoft VS Code retained as `upstream` remote.
 - TerraMind product identity and internal contribution are present.
-- Analyzer API and first-pass Analyze command are present: HCL parse, AWS static rules, ML risk estimate, and Problems diagnostics.
+- Analyzer API and built-in Analyze/Generate commands are present: HCL parse, AWS static rules, opt-in Terraform/TFLint/Checkov integration, ML risk estimate, Problems diagnostics, local Ollama draft preview and explicit save.
 - A compact, grouped-evaluation experimental logistic model is available; it is not a general Terraform code-generation model or production predictor.
-- TerraMind extension compilation passes with 0 TypeScript errors; analyzer/ML tests pass (11).
+- TerraMind extension compilation passes with 0 TypeScript errors; analyzer/ML/data preparation tests pass (19).
 - Full Code-OSS install/build/launch is **not verified**; Windows native build prerequisites and GitHub's upstream-specific self-hosted runners remain outstanding. See the latest build/CI entry in [PROGRESS.md](../PROGRESS.md).
-- A testing-branch workflow now targets downloadable Windows x64 ZIP and Linux x64 TAR.GZ preview builds. A `terramind-v*` tag produces a draft private release only after both builds succeed; no package is published until a successful run. These alpha packages still require the analyzer API to be started manually and are not end-user-ready.
+- A testing-branch workflow targets downloadable Windows x64 ZIP and Linux x64 TAR.GZ preview builds. A `terramind-v*` tag can create a draft private release only after both builds succeed; current hosted jobs are not yet verified. These alpha packages still require the analyzer API and Ollama to be started manually and are not end-user-ready.
 
 ## Next technical milestones
 
 1. Complete the native prerequisites and verify a branded development launch.
 2. Add analyzer workspace allowlisting and stable rules/tests for more invalid and insecure configurations.
-3. Add Terraform CLI, TFLint, and Checkov integrations with bounded process time and explicit skipped-tool states.
-4. Finish diagnostic mappings and analyzer lifecycle UX in the workbench.
-5. Add AI generation only after the deterministic analysis stage can test generated code.
+3. Install/run the local model; fine-tune and benchmark an adapter only after GPU training dependencies and corpus licensing are verified.
+4. Add reliability/cost/scalability ratings that show their criteria and insufficient-information states.
+5. Finish analysis report UX, repair proposals, and repeated verification of reviewed changes.
 
 ## Development requirements and maintenance
 

@@ -67,6 +67,16 @@
 					"type": "string",
 					"default": "http://127.0.0.1:8000",
 					"description": "%configuration.analyzerUrl%"
+				},
+				"terramind.generationModel": {
+					"type": "string",
+					"default": "qwen2.5-coder:3b",
+					"description": "%configuration.generationModel%"
+				},
+				"terramind.analysis.runExternalTools": {
+					"type": "boolean",
+					"default": false,
+					"description": "%configuration.runExternalTools%"
 				}
 			}
 		}

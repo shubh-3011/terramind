@@ -1,29 +1,29 @@
 # TerraMind architecture and API contracts
 
-TerraMind is a Code-OSS fork. Its Terraform-specific commands and panels are built into the application source and released with the TerraMind installer. They are not a separately installed Marketplace extension.
+TerraMind is a Code-OSS fork. Its Terraform-specific commands and panels are built into the application source and intended to ship with TerraMind desktop downloads. They are not a separately installed Marketplace extension.
 
 ## Component responsibilities
 
 | Component | Responsibility | Must not do |
 | --- | --- | --- |
 | TerraMind workbench | Collect user intent, invoke API, display diagnostics/report/diff, request user confirmation | Run `apply`, decide risk, or trust LLM output without report evidence |
-| Analyzer API | Validate requests, create isolated analysis jobs, call tools, normalize results, invoke model/LLM adapters | Persist credentials or mutate source workspace without explicit patch request |
-| Tool adapters | Execute Terraform, TFLint, Checkov with timeouts and structured capture | Interpret LLM prose as tool output |
+| Analyzer API | Validate requests, parse bounded workspaces, optionally call static tools, invoke the experimental model and local Ollama adapter | Persist credentials or write generated source |
+| Tool adapters | Run opt-in `terraform fmt`, pre-initialized `terraform validate`, TFLint and Checkov with timeouts, JSON capture, isolated user-home, and cloud credential scrubbing | Run `init`, `plan`, or `apply`; interpret LLM prose as tool output |
 | Feature extractor | Parse Terraform/static reports into versioned numeric/categorical features | Label data from a test split |
 | ML service/module | Load versioned trained model; return class, probability, calibration/version metadata | Replace deterministic findings |
 | Ollama adapter | Generate code/explanation/diff from bounded prompt context and analysis report | Apply files or certify correctness |
 
 ## TerraMind workbench user interface
 
-The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Currently, Analyze Workspace publishes returned findings into the built-in Problems collection and shows summary counts; generation, rating, and repair surfaces below remain planned:
+The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Analyze Workspace publishes returned findings into Problems. Generate Infrastructure collects requirements, previews HCL from local Ollama, and writes only after explicit user save/overwrite approval; ratings and repair remain planned:
 
 | Surface | Purpose |
 | --- | --- |
 | Command palette/context menu | Analyze current workspace, generate infrastructure, explain a finding, generate a repair, re-test. |
 | Terraform diagnostics | Display tool findings and compatibility errors inline at relevant `.tf` locations. |
 | TerraMind analysis panel | Show tool status, overall ML risk, service ratings, evidence, and actions. |
-| Generate Infrastructure dialog | Collect free-text intent plus region, resource counts, connectivity, workload, budget, and availability requirements. |
-| Diff preview | Show LLM-generated files or repair changes before an explicit apply action. |
+| Generate Infrastructure dialog | Collect free-text intent and constraints; structured region/resource/workload fields remain planned. |
+| Draft preview | Show generated HCL before the user chooses an in-workspace path; only HCL syntax is verified. |
 
 ## Rating contract
 
@@ -77,15 +77,15 @@ Current synchronous response:
 }
 ```
 
-The current implementation uses `python-hcl2` to parse `.tf` files and deterministic rules: `TM-NET-001` public SSH ingress (including supported literal dynamic ingress); `TM-NET-003` unresolved dynamic ingress for manual review; `TM-IAM-001/002` wildcard actions/resources; `TM-S3-001/002` disabled S3 public-access protections/public ACLs; `TM-ECR-001` mutable image tags; `TM-EC2-001` optional IMDSv2 tokens; and `TM-EBS-001` explicit disabled EBS encryption. `TM-HCL-001` is a parser error. Findings are static heuristics, not Terraform provider validation, scanner results, or model predictions. File discovery excludes `.terraform`, `.git`, and `node_modules`, skips external symlink targets, and enforces file-count/size limits. It does not run `terraform init`, providers, `terraform validate`, TFLint, or Checkov.
+The current implementation uses `python-hcl2` to parse `.tf` files and deterministic rules: `TM-NET-001` public SSH ingress (including supported literal dynamic ingress); `TM-NET-003` unresolved dynamic ingress for manual review; `TM-IAM-001/002` wildcard actions/resources; `TM-S3-001/002` disabled S3 public-access protections/public ACLs; `TM-ECR-001` mutable image tags; `TM-EC2-001` optional IMDSv2 tokens; and `TM-EBS-001` explicit disabled EBS encryption. `TM-HCL-001` is a parser error. Optional external tools are off by default and require `run_external_tools=true`; TerraMind never initializes a workspace or runs plan/apply. `terraform validate` runs only when an existing provider installation is found and can execute those installed plugins, so the user must trust the workspace before opting in. Tool output is bounded and child processes receive no cloud credentials. File discovery excludes `.terraform`, `.git`, and `node_modules`, skips external symlink targets, and enforces file-count/size limits.
 
 When a compatible model artifact exists and every Terraform file parses, the API returns a separate experimental estimate trained on a small, generated AWS control corpus. The estimate is uncalibrated, reports the training sample count, and may be absent when a file failed parsing or the artifact is missing. It predicts benchmark-control violation labels only—not cloud runtime outcomes.
 
-**Local-service security status:** the API currently accepts a workspace path from its local caller and does not yet implement a configured path allowlist. Bind it only to loopback for development. Add an explicit approved-root boundary and request authorization before enabling external-tool execution or exposing the service beyond the local machine.
+**Local-service security status:** the API accepts a workspace path from its local caller and does not yet implement a configured path allowlist or request authorization. Bind it only to loopback for development. Do not expose the service beyond the local machine.
 
-### `POST /v1/generation`
+### `POST /v1/generate` (implemented, local model required)
 
-Request contains `prompt`, approved `workspace_path`, and an optional file-layout template. Response contains generated files plus an `AnalysisReport`; files are staged only, never written silently.
+Request contains a bounded description, constraints, and optional installed Ollama model name. The API talks only to loopback Ollama, returns parseable HCL only, and never writes files. The editor previews it; saving is user initiated.
 
 ### `POST /v1/repair-proposals`
 

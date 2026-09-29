@@ -7,5 +7,7 @@
 	"viewContainer.title": "TerraMind",
 	"view.dashboard": "Infrastructure Intelligence",
 	"configuration.title": "TerraMind",
-	"configuration.analyzerUrl": "Base URL for the local TerraMind analyzer service."
+	"configuration.analyzerUrl": "Base URL for the local TerraMind analyzer service.",
+	"configuration.generationModel": "Model name already installed in the local Ollama instance.",
+	"configuration.runExternalTools": "Run installed Terraform fmt/validate, TFLint, and Checkov during analysis. Disabled by default; validate may execute already-installed provider plugins, and TerraMind never runs init or plan."
 }

@@ -9,6 +9,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any, Literal
 
@@ -29,13 +32,30 @@ class AnalyzeRequest(BaseModel):
     """A request to statically inspect one local Terraform workspace."""
 
     workspace_path: str = Field(min_length=1, max_length=4096)
+    run_external_tools: bool = False
+
+
+class GenerateRequest(BaseModel):
+    """A bounded natural-language request for local Terraform generation."""
+
+    description: str = Field(min_length=10, max_length=10_000)
+    constraints: str = Field(default="", max_length=10_000)
+    model: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class GenerateResponse(BaseModel):
+    status: Literal["completed"]
+    model: str
+    terraform: str
+    syntax_valid: bool
+    validation_scope: str
 
 
 class Finding(BaseModel):
     """A stable, navigable finding; scanner/model results use distinct sources."""
 
     id: str
-    source: Literal["hcl-parser", "terramind-rules"]
+    source: str
     rule_id: str
     severity: Literal["error", "warning", "information"]
     message: str
@@ -49,6 +69,7 @@ class AnalyzeResponse(BaseModel):
     terraform_file_count: int
     parsed_file_count: int
     findings: list[Finding]
+    service_ratings: list[dict[str, Any]]
     risk_prediction: dict[str, Any] | None
     risk_prediction_reason: str | None
     checks: dict[str, str]
@@ -123,21 +144,120 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
         risk_prediction = predict_risk(extract_features(parsed_documents, parsed_sources))
         risk_prediction_reason = None if risk_prediction else "No compatible trained risk model is available."
 
+    if request.run_external_tools:
+        # Import after Finding is defined to keep the scanner adapter's schema dependency acyclic.
+        from app.tool_runner import run_static_tools
+
+        tool_findings, tool_checks = run_static_tools(workspace)
+        findings.extend(tool_findings)
+    else:
+        tool_checks = {
+            "terraform_fmt": "not_run: external tools disabled in TerraMind settings",
+            "terraform_validate": "not_run: external tools disabled in TerraMind settings",
+            "tflint": "not_run: external tools disabled in TerraMind settings",
+            "checkov": "not_run: external tools disabled in TerraMind settings",
+        }
+
+    from app.ratings import build_service_ratings
+    service_ratings = build_service_ratings(parsed_documents, findings)
+
     return AnalyzeResponse(
         status="completed",
         terraform_file_count=len(terraform_files),
         parsed_file_count=parsed_file_count,
         findings=findings,
+        service_ratings=service_ratings,
         risk_prediction=risk_prediction,
         risk_prediction_reason=risk_prediction_reason,
         checks={
             "hcl_parse": "completed",
-            "terraform_validate": "not_run: provider initialization and execution are not enabled",
-            "tflint": "not_run: integration pending",
-            "checkov": "not_run: integration pending",
+            **tool_checks,
             "ml_risk": f"experimental: {risk_prediction['model_version']}" if risk_prediction else "not_available: " + str(risk_prediction_reason),
         },
     )
+
+
+@app.post("/v1/generate", response_model=GenerateResponse)
+def generate_terraform(request: GenerateRequest) -> GenerateResponse:
+    """Generate an HCL draft with a local Ollama model; never writes files."""
+    model = request.model or os.environ.get("TERRAMIND_OLLAMA_MODEL", "qwen2.5-coder:3b")
+    ollama_url = os.environ.get("TERRAMIND_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+    try:
+        ollama_endpoint = urllib.parse.urlsplit(ollama_url)
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail="TerraMind only supports a loopback Ollama endpoint") from error
+    try:
+        local_host = ollama_endpoint.hostname in {"127.0.0.1", "localhost", "::1"}
+        valid_port = ollama_endpoint.port is None or 1 <= ollama_endpoint.port <= 65535
+    except ValueError:
+        local_host, valid_port = False, False
+    if (
+        ollama_endpoint.scheme != "http" or not local_host or not valid_port
+        or ollama_endpoint.username is not None or ollama_endpoint.password is not None
+        or ollama_endpoint.query or ollama_endpoint.fragment
+    ):
+        raise HTTPException(status_code=503, detail="TerraMind only supports a loopback Ollama endpoint")
+
+    prompt = (
+        "You are TerraMind, a Terraform HCL drafting assistant. Generate one complete Terraform configuration. "
+        "Return only HCL, without Markdown fences or prose. Include required_providers and provider configuration "
+        "when needed, use variables for environment-specific values, prefer secure defaults, and do not include "
+        "credentials or run/deploy instructions. Make assumptions explicit as HCL comments.\n\n"
+        f"Infrastructure requested:\n{request.description}\n\n"
+        f"Constraints and connectivity:\n{request.constraints or 'No extra constraints supplied.'}\n"
+    )
+    payload = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.1, "num_predict": 8192},
+    }).encode("utf-8")
+    http_request = urllib.request.Request(
+        f"{ollama_url}/api/generate",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        # Disable proxy discovery: the prompt and generated code must stay on loopback.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(http_request, timeout=180) as response:
+            result = json.loads(response.read(2_000_000).decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Local Ollama is unavailable. Start Ollama and pull the configured model first.",
+        ) from error
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise HTTPException(status_code=502, detail="Local Ollama returned an invalid response") from error
+
+    terraform = result.get("response") if isinstance(result, dict) else None
+    if not isinstance(terraform, str) or not terraform.strip():
+        raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
+    terraform = _strip_hcl_fence(terraform.strip())
+    if len(terraform.encode("utf-8")) > 1_000_000:
+        raise HTTPException(status_code=502, detail="Generated Terraform exceeds the 1 MB preview limit")
+    try:
+        hcl2.loads(terraform)
+    except Exception as error:  # HCL parser exceptions vary by python-hcl2 version
+        raise HTTPException(
+            status_code=422,
+            detail=f"The model response is not parseable HCL; nothing was written: {_parse_error_message(error)}",
+        ) from error
+
+    return GenerateResponse(
+        status="completed",
+        model=str(result.get("model", model)),
+        terraform=terraform,
+        syntax_valid=True,
+        validation_scope="HCL syntax parsing only; provider schemas, references, scanners, costs, and deployment behavior are not verified.",
+    )
+
+
+def _strip_hcl_fence(source: str) -> str:
+    """Remove one outer Markdown fence without changing the HCL body."""
+    match = re.fullmatch(r"```(?:hcl|terraform)?\s*\n([\s\S]*?)\n```", source, re.IGNORECASE)
+    return match.group(1) if match else source
 
 
 def _discover_terraform_files(workspace: Path) -> list[Path]:

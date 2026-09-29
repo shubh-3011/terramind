@@ -1,6 +1,6 @@
 # Dataset and ML protocol
 
-> **Status (2026-09-29):** the first reproducible pipeline and experimental risk baseline are implemented in [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md): 46 generated AWS cases, 23 paired controls, and grouped out-of-fold metrics. This is a prototype only—not a validated production model. The larger corpus, independently reviewed labels, external validation, calibration, and richer evaluation below remain future work.
+> **Status (2026-09-29):** the experimental risk baseline uses 46 generated AWS cases and 23 paired controls; its limits are in [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md). A distinct pinned and license-aware HCL generation-data preparation pipeline is described in [GENERATIVE_TRAINING.md](GENERATIVE_TRAINING.md). The SFT corpus is not a security/outage/cost label source. Independently reviewed labels, external validation, calibration, and a fine-tuned generator remain future work.
 
 ## Research question
 
@@ -15,6 +15,8 @@ The current experiment predicts a narrow synthetic benchmark label. It does not 
 3. Pin each source revision; never train directly from a moving branch.
 4. Deduplicate near-identical modules/configurations using normalized content hashes.
 5. Keep raw benchmark Terraform outside Git. This repository currently tracks the pinned source manifest, derived numeric feature CSV, training script, portable JSON model, and metrics report; it does not contain the benchmark's raw Terraform files.
+
+For natural-language → HCL generation, use the separate pinned [SASVAAI/terraform-multicloud](https://huggingface.co/datasets/SASVAAI/terraform-multicloud) source and run `python -m terramind_ml.sft_data` to filter the AWS lane, verify HCL parseability and repo-disjoint splits, and retain source attribution. Prepared text is local-only under `.build`; never mix these unlabeled generation examples into binary-risk training.
 
 ## Sample schema
 

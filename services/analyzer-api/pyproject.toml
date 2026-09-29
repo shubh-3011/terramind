@@ -19,6 +19,9 @@ dev = [
     "pytest>=8,<10",
     "scikit-learn>=1.6,<2"
 ]
+sft-data = [
+    "datasets>=3,<5"
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

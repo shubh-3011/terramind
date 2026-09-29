@@ -2,22 +2,22 @@
 
 ## Current prototype demo (2-3 minutes)
 
-1. Start the FastAPI service on loopback and open a small Terraform workspace in a TerraMind development window (once the Code-OSS app build is unblocked).
+1. Start the FastAPI service on loopback and Ollama with the configured coder model; open a small Terraform workspace in a TerraMind development window (once the Code-OSS app build is verified).
 2. Run **TerraMind: Analyze Workspace**.
 3. Show HCL parse diagnostics and the current network, IAM, S3, ECR, EC2, and EBS static rules in Problems, including dynamic ingress resolution/review behavior.
 4. Show the experimental, uncalibrated model estimate and its training-set limits; distinguish it from deterministic findings.
-5. Point out the response's explicit `not_run` / `not_available` statuses for Terraform validation and scanners.
+5. Optionally enable external tools only on a trusted workspace and show explicit passed/failed/not-run states; no `init`, `plan`, or `apply` is run.
 6. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
 
-Until the fork launches, run the 11 API/ML tests and call the API directly against an intentionally vulnerable benchmark fixture to demonstrate the backend slice. The extension compiles separately, but this does not establish a successful full Code-OSS build.
+Until the fork launches, run the 19 API/ML/data-preparation tests and call the API directly against an intentionally vulnerable benchmark fixture to demonstrate the backend slice. Generation needs a live local Ollama model and has not yet been demonstrated end-to-end. The extension compiles separately, but this does not establish a successful full Code-OSS build.
 
 ## Planned final demo (5-7 minutes)
 
 1. Open a small valid AWS Terraform fixture in TerraMind and show the panel.
-2. Run **Analyze**: show `fmt`/`validate` pass, scanner results, and a separately labeled model risk probability with version.
+2. Run **Analyze**: show `fmt`/`validate` and scanner results only when configured and available, plus a separately labeled model risk probability with version.
 3. Open a fixture with an invalid reference and insecure SSH/IAM rule. Re-run analysis and navigate from findings to exact lines.
-4. Ask for a grounded explanation; show that it cites analyzer findings rather than declaring LLM certainty.
-5. Ask for a repair proposal. Inspect the unified diff, accept it explicitly, and re-run all checks.
+4. Generate a Terraform draft using local Ollama, preview it, then explicitly save it and re-run analysis.
+5. Ask for a grounded explanation or repair proposal only after those features are implemented; inspect any diff and re-run all checks.
 6. Show the evaluation report: grouped split policy, baseline comparison, calibration, test metrics, and limitations.
 
 Use offline, checked-in fixtures and recorded tool/model versions. Do not rely on a live cloud account during the presentation.

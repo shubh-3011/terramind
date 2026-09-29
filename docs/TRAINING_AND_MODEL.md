@@ -57,3 +57,5 @@ The exact generated evaluation is [reports/terraform-risk-v1-metrics.json](../re
 3. Compare richer deterministic baselines and feature ablations before adding model complexity.
 4. Calibrate probabilities only if the dataset size and validation design support it.
 5. Keep code generation/explanation in a separate local LLM adapter; never merge LLM output into ground-truth labels.
+
+The generation command now uses a local Ollama code model but is not TerraMind-fine-tuned. See [GENERATIVE_TRAINING.md](GENERATIVE_TRAINING.md) for the separate instruction corpus, licensing, and preparation pipeline. Generation corpus examples must never be treated as risk labels.

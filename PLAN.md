@@ -1,6 +1,6 @@
 # TerraMind implementation blueprint
 
-> **Live status (2026-09-29):** TerraMind is a private Code-OSS fork with a bundled Analyze command, static AWS/HCL findings, Problems diagnostics, and a small experimental logistic-regression baseline trained on 46 generated AWS cases with paired grouped cross-validation. Analyzer/ML tests (11) and extension compilation pass. The full editor build/launch and fresh GitHub PR build checks remain unverified; see [PROGRESS.md](PROGRESS.md) and [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md).
+> **Live status (2026-09-29):** TerraMind is a private Code-OSS fork with bundled Analyze and Generate commands, opt-in Terraform/TFLint/Checkov analysis, review-before-save local Ollama generation, static AWS/HCL findings, Problems diagnostics, an experimental risk baseline trained on 46 generated AWS cases, and a reproducible license-attributed generation-corpus preparation pipeline. API/data tests (19) and extension compilation pass. The Ollama model, fine-tuned adapter, full editor build/launch, and current PR package outputs remain unverified; see [PROGRESS.md](PROGRESS.md), [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md), and [docs/GENERATIVE_TRAINING.md](docs/GENERATIVE_TRAINING.md).
 
 ## 1. Refined problem statement
 
@@ -18,7 +18,7 @@ Terraform authoring tools help with syntax, but generated or hand-written infras
 
 ## 3. Exact MVP scope
 
-**In (target MVP):** a branded Code-OSS fork named TerraMind, Terraform HCL, AWS-focused projects, built-in TerraMind workbench features, local FastAPI service, local Ollama model, `terraform fmt`/`validate`, guarded `plan`, TFLint, Checkov, deterministic finding aggregation, feature extraction, one binary risk model, explanation and patch proposal, patch preview, re-test. **Current implementation is partial:** HCL parsing, static AWS rules, bundled Problems diagnostics, and a small experimental logistic baseline are implemented; Terraform CLI/scanners/LLM integration and production-quality ML validation remain open.
+**In (target MVP):** a branded Code-OSS fork named TerraMind, Terraform HCL, AWS-focused projects, built-in TerraMind workbench features, local FastAPI service, local Ollama model, `terraform fmt`/`validate`, guarded `plan`, TFLint, Checkov, deterministic finding aggregation, feature extraction, one binary risk model, explanation and patch proposal, patch preview, re-test. **Current implementation is partial:** HCL parsing/static AWS rules, opt-in `fmt`/TFLint/Checkov and pre-initialized `validate`, bundled Analyze/Generate commands, local Ollama HCL drafting with user-reviewed save, and the small experimental logistic baseline are implemented; a fine-tuned generation adapter, reliability/cost/scalability ratings, repairs, automated service lifecycle, and production-quality ML validation remain open.
 
 **Out:** automatic cloud deployment, multi-cloud support, cost optimization, Kubernetes, Pulumi, CloudFormation, autonomous multi-file edits without review, failure-category model, quality-score model, graph visualization, and production-scale hosted service.
 
@@ -97,16 +97,16 @@ The required model predicts binary risk/failure probability. Compare logistic re
 
 ## 7. Milestones
 
-**Current estimate:** roughly 35–40% of agreed MVP scope by milestone coverage (not a schedule estimate). Every milestone remains partial except the unstarted local-AI workflow; the full desktop build and launch are unverified. The [progress log](PROGRESS.md) has the evidence and remaining work for each milestone.
+**Current estimate:** roughly 55–60% of agreed MVP scope by milestone coverage (not a schedule or quality estimate). The generation workflow is implemented but awaits a live Ollama model test; ML remains exploratory, and the full desktop build and launch are unverified. The [progress log](PROGRESS.md) has the evidence and remaining work for each milestone.
 
 | Milestone | Deliverable | Exit criteria |
 | --- | --- | --- |
 | M0 - Fork foundation | Clone/pin Code-OSS, TerraMind product branding, build prerequisites, tool preflight | Source snapshot and branding exist; development build still blocked/unverified by Windows native dependencies. |
-| M1 - Deterministic analyzer | HCL parse diagnostics, bounded workspace scan, report schema, tested rules, then Terraform/TFLint/Checkov adapters | HCL/static slice passes tests; CLI/scanner integrations and broader rules remain. |
-| M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS feature dataset builds reproducibly; larger independently sourced data remains needed. |
+| M1 - Deterministic analyzer | HCL parse diagnostics, bounded workspace scan, report schema, tested rules, then Terraform/TFLint/Checkov adapters | HCL/static and opt-in CLI/scanner adapters implemented and unit-tested; broader rules, workspace allowlisting, and live installed-tool tests remain. |
+| M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS risk dataset builds reproducibly; a separate pinned, license-aware 45K-row AWS generation corpus preparation pipeline is implemented but has not yet been run. |
 | M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Experimental logistic baseline, grouped OOF metrics, pair-group bootstrap intervals, reproducible training workflow, and portable model artifact; no external validation or calibration. |
-| M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze a workspace and navigate to findings. |
-| M5 - Local AI workflow | Ollama adapter, grounded generation/explanation/patch proposal | Previewed patch is user-approved and re-tested. |
+| M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze and Generate commands, Problems diagnostics, prompt capture, preview, and explicit in-workspace save implemented; UX/runtime integration tests remain. |
+| M5 - Local AI workflow | Ollama adapter, grounded generation/explanation/patch proposal | Local generation adapter implemented with HCL parse gate and explicit preview/save; live inference, fine-tune, explanations, repairs, and re-test feedback loop remain. |
 | M6 - Demo hardening | Demo fixtures, tests, screenshots/video, presentation | Repeatable 5-7 minute demo from a clean setup. |
 
 ## 8. Testing strategy

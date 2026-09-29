@@ -12,6 +12,22 @@ interface AnalysisResult {
 	readonly findings: readonly AnalysisFinding[];
 	readonly risk_prediction: RiskPrediction | null;
 	readonly risk_prediction_reason: string | null;
+	readonly checks: Readonly<Record<string, string>>;
+	readonly service_ratings: readonly ServiceRating[];
+}
+
+interface ServiceRating {
+	readonly service: string;
+	readonly resource_count: number;
+	readonly dimensions: Readonly<Record<string, { readonly score: number | null; readonly status: string; readonly summary: string }>>;
+}
+
+interface GenerationResult {
+	readonly status: string;
+	readonly model: string;
+	readonly terraform: string;
+	readonly syntax_valid: boolean;
+	readonly validation_scope: string;
 }
 
 interface AnalysisFinding {
@@ -41,11 +57,13 @@ class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeI
 	private analyzerStatus = 'Analyzer Not Checked';
 	private workspaceStatus = 'No Analysis Run';
 	private riskStatus = 'Not Available';
+	private ratingItems: readonly { readonly label: string; readonly description: string }[] = [];
 
-	refresh(analyzerStatus: string, workspaceStatus: string, riskStatus: string): void {
+	refresh(analyzerStatus: string, workspaceStatus: string, riskStatus: string, ratingItems: readonly { readonly label: string; readonly description: string }[] = []): void {
 		this.analyzerStatus = analyzerStatus;
 		this.workspaceStatus = workspaceStatus;
 		this.riskStatus = riskStatus;
+		this.ratingItems = ratingItems;
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -58,8 +76,7 @@ class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeI
 			this.createItem('TerraMind Analyzer', this.analyzerStatus, 'server'),
 			this.createItem('Terraform Workspace', this.workspaceStatus, 'file-code'),
 			this.createItem(vscode.l10n.t('Experimental Risk Estimate'), this.riskStatus, 'shield'),
-			this.createItem('Reliability Rating', 'Available After Analysis', 'pulse'),
-			this.createItem('Scalability Rating', 'Available After Analysis', 'graph')
+			...this.ratingItems.map(item => this.createItem(item.label, item.description, 'graph'))
 		];
 	}
 
@@ -94,7 +111,8 @@ export function activate(context: vscode.ExtensionContext): void {
 			cancellable: false
 		}, async () => {
 			try {
-				const result = await requestAnalysis(workspaceFolder.uri.fsPath);
+				const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
+				const result = await requestAnalysis(workspaceFolder.uri.fsPath, runExternalTools);
 				diagnostics.clear();
 				const byFile = new Map<string, vscode.Diagnostic[]>();
 				for (const finding of result.findings ?? []) {
@@ -128,10 +146,30 @@ export function activate(context: vscode.ExtensionContext): void {
 				const riskStatus = result.risk_prediction
 					? vscode.l10n.t('{0}% · uncalibrated · n={1}', Math.round(result.risk_prediction.probability * 100), result.risk_prediction.training_samples)
 					: result.risk_prediction_reason ?? vscode.l10n.t('Not Available');
-				dashboard.refresh(vscode.l10n.t('Connected'), workspaceStatus, riskStatus);
+				const ratingItems = (result.service_ratings ?? []).map(rating => {
+					const security = rating.dimensions.security;
+					const securityValue = security?.score === null || security?.score === undefined
+						? vscode.l10n.t('security not rated')
+						: vscode.l10n.t('security {0}/100 · limited evidence', security.score);
+					const unknownDimensions = ['reliability', 'scalability', 'cost', 'maintainability']
+						.filter(dimension => rating.dimensions[dimension]?.status === 'insufficient_information').join(', ');
+					return {
+						label: `${rating.service} (${rating.resource_count})`,
+						description: unknownDimensions ? `${securityValue} · ${vscode.l10n.t('not rated')}: ${unknownDimensions}` : securityValue
+					};
+				});
+				dashboard.refresh(vscode.l10n.t('Connected'), workspaceStatus, riskStatus, ratingItems);
 				const errors = result.findings.filter(finding => finding.severity === 'error').length;
 				const warnings = result.findings.filter(finding => finding.severity === 'warning').length;
 				output.appendLine(`Analysis status=${result.status}; parsed=${result.parsed_file_count}/${result.terraform_file_count}; errors=${errors}; warnings=${warnings}`);
+				for (const [check, status] of Object.entries(result.checks ?? {})) {
+					output.appendLine(`CHECK ${check}: ${status}`);
+				}
+				for (const rating of result.service_ratings ?? []) {
+					for (const [dimension, details] of Object.entries(rating.dimensions)) {
+						output.appendLine(`RATING ${rating.service} ${dimension}: ${details.status}${details.score === null ? '' : ` ${details.score}/100`}; ${details.summary}`);
+					}
+				}
 				for (const finding of result.findings) {
 					output.appendLine(`${finding.severity.toUpperCase()} ${finding.rule_id} ${finding.file}${finding.line ? `:${finding.line}` : ''}: ${finding.message}`);
 				}
@@ -153,36 +191,108 @@ export function activate(context: vscode.ExtensionContext): void {
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.generateInfrastructure', async () => {
-		const requirement = await vscode.window.showInputBox({
-			prompt: vscode.l10n.t('Describe the AWS Terraform infrastructure you need.'),
-			placeHolder: vscode.l10n.t('Example: 2 private application servers in one VPC with an S3 bucket')
-		});
-		if (!requirement) {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			await vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before generating Terraform.'));
 			return;
 		}
-
-		const constraints = await vscode.window.showInputBox({
-			prompt: vscode.l10n.t('Add region, connectivity, security, cost, or availability constraints.'),
-			placeHolder: vscode.l10n.t('Example: ap-south-1, no public SSH, target 99.9% availability')
+		const requirements = await vscode.window.showInputBox({
+			prompt: vscode.l10n.t('Describe the AWS infrastructure and how resources connect.'),
+			placeHolder: vscode.l10n.t('Example: 2 private app servers in one VPC, behind a public ALB, with read-only access to one S3 bucket'),
+			ignoreFocusOut: true
 		});
-		output.appendLine(`Generation request captured. Requirement: ${requirement}`);
-		output.appendLine(`Constraints: ${constraints ?? ''}`);
-		output.show(true);
-		await vscode.window.showInformationMessage(vscode.l10n.t('TerraMind captured your infrastructure request. Local LLM generation will be enabled after the analyzer pipeline is complete.'));
+		if (!requirements?.trim()) {
+			return;
+		}
+		const constraints = await vscode.window.showInputBox({
+			prompt: vscode.l10n.t('Add region, traffic, budget, availability, and security constraints.'),
+			placeHolder: vscode.l10n.t('Example: ap-south-1, no public SSH, low traffic, no fixed monthly budget'),
+			ignoreFocusOut: true
+		});
+		try {
+			const model = vscode.workspace.getConfiguration('terramind').get<string>('generationModel', 'qwen2.5-coder:3b');
+			const generated = await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with local Ollama'),
+				cancellable: false
+			}, () => requestGeneration(requirements.trim(), constraints?.trim() ?? '', model));
+			if (!generated.syntax_valid) {
+				throw new Error('The generated draft did not pass HCL syntax parsing.');
+			}
+			output.appendLine(`Generated Terraform draft with ${generated.model}. ${generated.validation_scope}`);
+			const preview = await vscode.workspace.openTextDocument({ language: 'terraform', content: generated.terraform });
+			await vscode.window.showTextDocument(preview, { preview: false });
+			const choice = await vscode.window.showInformationMessage(
+				vscode.l10n.t('Draft parsed as HCL. Provider compatibility, security, cost, and deployment behavior are not verified.'),
+				{ modal: true },
+				vscode.l10n.t('Save Draft to Workspace'),
+				vscode.l10n.t('Discard')
+			);
+			if (choice !== vscode.l10n.t('Save Draft to Workspace')) {
+				return;
+			}
+			const target = await vscode.window.showSaveDialog({
+				defaultUri: vscode.Uri.joinPath(workspaceFolder.uri, 'terramind-generated', 'main.tf'),
+				saveLabel: vscode.l10n.t('Save Reviewed Terraform Draft'),
+				filters: { [vscode.l10n.t('Terraform')]: ['tf'] }
+			});
+			if (!target) {
+				return;
+			}
+			if (vscode.workspace.getWorkspaceFolder(target)?.uri.toString() !== workspaceFolder.uri.toString()) {
+				await vscode.window.showErrorMessage(vscode.l10n.t('Choose a location inside the currently open workspace.'));
+				return;
+			}
+			try {
+				await vscode.workspace.fs.stat(target);
+				const overwrite = await vscode.window.showWarningMessage(
+					vscode.l10n.t('This file already exists. Replace it with the reviewed draft?'),
+					{ modal: true }, vscode.l10n.t('Overwrite')
+				);
+				if (overwrite !== vscode.l10n.t('Overwrite')) {
+					return;
+				}
+			} catch (error) {
+				if (!(error instanceof vscode.FileSystemError) || error.code !== 'FileNotFound') {
+					throw error;
+				}
+			}
+			await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(generated.terraform));
+			output.appendLine(`Saved reviewed draft to ${vscode.workspace.asRelativePath(target)}; starting workspace analysis.`);
+			await vscode.commands.executeCommand('terramind.analyzeWorkspace');
+		} catch (error) {
+			output.appendLine(`Local Terraform generation failed: ${getErrorMessage(error)}`);
+			output.show(true);
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not generate a draft. Confirm Ollama is running and the configured model is available.'));
+		}
 	}));
 }
 
-async function requestAnalysis(workspacePath: string): Promise<AnalysisResult> {
+async function requestAnalysis(workspacePath: string, runExternalTools: boolean): Promise<AnalysisResult> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
 	const response = await fetch(`${analyzerUrl}/v1/analyze`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ workspace_path: workspacePath })
+		body: JSON.stringify({ workspace_path: workspacePath, run_external_tools: runExternalTools })
 	});
 	if (!response.ok) {
 		throw new Error(`Analyzer returned HTTP ${response.status}`);
 	}
 	return await response.json() as AnalysisResult;
+}
+
+async function requestGeneration(description: string, constraints: string, model: string): Promise<GenerationResult> {
+	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
+	const response = await fetch(`${analyzerUrl}/v1/generate`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ description, constraints, model })
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => undefined) as { detail?: string } | undefined;
+		throw new Error(error?.detail ?? `Analyzer returned HTTP ${response.status}`);
+	}
+	return await response.json() as GenerationResult;
 }
 
 function getErrorMessage(error: unknown): string {

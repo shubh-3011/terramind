@@ -8,7 +8,7 @@ TerraMind is a branded desktop editor built from Code-OSS. The Terraform-specifi
 
 ## D-002: Terraform and AWS only in version 1
 
-**Status:** accepted for MVP.
+**Status:** accepted for MVP; static integrations implemented opt-in.
 
 Provider-specific feature extraction and controlled mutations are necessary for credible evaluation. Restricting to AWS makes the data and demo tractable.
 
@@ -16,7 +16,7 @@ Provider-specific feature extraction and controlled mutations are necessary for 
 
 **Status:** accepted for MVP.
 
-The backend may run formatting, validation, static analyzers, and a guarded plan. It must not call `terraform apply`, create cloud resources, or retain cloud credentials.
+The backend may run formatting, validation, and static analyzers. These integrations default off; `terraform validate` is limited to already-initialized provider plugins, and the runner scrubs cloud credentials. TerraMind must not initialize, plan, apply, create cloud resources, or retain cloud credentials.
 
 ## D-004: Traditional ML is separate from the LLM
 
@@ -34,7 +34,7 @@ Start with one binary risk model (risk/failure probability). Failure-category cl
 
 **Status:** accepted for MVP.
 
-**Planned:** the backend returns unified diffs. The extension shows the diff and applies it only through a user-confirmed workspace edit, then re-runs analysis. No generation or repair implementation exists yet.
+**Status:** generated drafts preview before the user explicitly saves to a selected path inside the current workspace; overwrites require another confirmation. Repair diffs and an automatic full verification loop remain planned.
 
 ## D-007: Start analysis with static checks and evidence labels
 
@@ -47,3 +47,9 @@ Use HCL parsing and transparent deterministic rules before invoking provider plu
 **Status:** accepted; experimental prototype trained and wired to analyzer/UI.
 
 Use a traditional, inspectable classifier over versioned numeric features rather than fine-tuning a foundation model on a tiny corpus. The initial logistic model uses a pinned, MIT-licensed controlled corpus, excludes case identifiers/comments from features, and groups paired variants during cross-validation. Label its output as experimental and uncalibrated; do not equate a benchmark-control violation score with deployment failure, uptime, scalability, or cost.
+
+## D-009: Keep generation data separate and attributed
+
+**Status:** accepted; preparation pipeline implemented, model fine-tuning not yet run.
+
+Use the pinned CC-BY-4.0 terraform-multicloud dataset only for optional NL-to-HCL training, preserve per-row repository/license attribution, filter to parseable AWS HCL and repository-disjoint splits, and keep prepared raw text out of Git. This corpus is not security, cost, reliability, or deployment ground truth.
