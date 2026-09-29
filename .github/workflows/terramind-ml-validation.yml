@@ -51,7 +51,14 @@ jobs:
       - name: Rebuild and verify derived dataset
         run: |
           python -m terramind_ml.dataset --source ../../.build/iacsecbench --output ../../.build/terraform-risk-v1.csv
-          cmp ../../data/processed/terraform-risk-v1.csv ../../.build/terraform-risk-v1.csv
+          python - <<'PY'
+          from pathlib import Path
+
+          tracked = Path("../../data/processed/terraform-risk-v1.csv").read_bytes()
+          rebuilt = Path("../../.build/terraform-risk-v1.csv").read_bytes()
+          if tracked.replace(b"\r\n", b"\n") != rebuilt.replace(b"\r\n", b"\n"):
+              raise SystemExit("Rebuilt feature dataset differs from the tracked dataset")
+          PY
         working-directory: services/analyzer-api
 
       - name: Run analyzer and ML tests
