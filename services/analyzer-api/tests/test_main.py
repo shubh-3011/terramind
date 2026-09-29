@@ -216,6 +216,42 @@ def test_generate_returns_parseable_hcl_without_writing_files(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_generate_runs_static_security_checks_before_preview():
+    generated_hcl = '''resource "aws_security_group" "web" {
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+'''
+
+    class OllamaResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps({"model": "test-model", "response": generated_hcl}).encode("utf-8")
+
+    class OllamaOpener:
+        def open(self, *_args, **_kwargs):
+            return OllamaResponse()
+
+    with patch("app.main.urllib.request.build_opener", return_value=OllamaOpener()):
+        response = client.post("/v1/generate", json={"description": "Create a web server"})
+
+    assert response.status_code == 200
+    generated = response.json()
+    assert any(finding["rule_id"] == "TM-NET-001" for finding in generated["findings"])
+    networking = next(rating for rating in generated["service_ratings"] if rating["service"] == "networking")
+    assert networking["dimensions"]["security"]["score"] == 65
+    assert "static security heuristics only" in generated["validation_scope"]
+
+
 def test_generate_rejects_unparseable_model_output():
     class OllamaResponse:
         def __enter__(self):

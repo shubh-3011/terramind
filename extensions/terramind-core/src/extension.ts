@@ -28,6 +28,8 @@ interface GenerationResult {
 	readonly terraform: string;
 	readonly syntax_valid: boolean;
 	readonly validation_scope: string;
+	readonly findings?: readonly AnalysisFinding[];
+	readonly service_ratings?: readonly ServiceRating[];
 }
 
 interface AnalysisFinding {
@@ -220,10 +222,22 @@ export function activate(context: vscode.ExtensionContext): void {
 				throw new Error('The generated draft did not pass HCL syntax parsing.');
 			}
 			output.appendLine(`Generated Terraform draft with ${generated.model}. ${generated.validation_scope}`);
+			const findings = generated.findings ?? [];
+			const errors = findings.filter(finding => finding.severity === 'error').length;
+			const warnings = findings.filter(finding => finding.severity === 'warning').length;
+			for (const finding of findings) {
+				output.appendLine(`${finding.severity.toUpperCase()} ${finding.rule_id} ${finding.file}${finding.line ? `:${finding.line}` : ''}: ${finding.message}`);
+			}
+			for (const rating of generated.service_ratings ?? []) {
+				for (const [dimension, details] of Object.entries(rating.dimensions)) {
+					output.appendLine(`GENERATED RATING ${rating.service} ${dimension}: ${details.status}${details.score === null ? '' : ` ${details.score}/100`}; ${details.summary}`);
+				}
+			}
+			output.show(true);
 			const preview = await vscode.workspace.openTextDocument({ language: 'terraform', content: generated.terraform });
 			await vscode.window.showTextDocument(preview, { preview: false });
 			const choice = await vscode.window.showInformationMessage(
-				vscode.l10n.t('Draft parsed as HCL. Provider compatibility, security, cost, and deployment behavior are not verified.'),
+				vscode.l10n.t('Draft parsed as HCL; static checks found {0} error(s) and {1} warning(s). Provider compatibility, cost, and deployment behavior are not verified.', errors, warnings),
 				{ modal: true },
 				vscode.l10n.t('Save Draft to Workspace'),
 				vscode.l10n.t('Discard')
@@ -263,7 +277,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		} catch (error) {
 			output.appendLine(`Local Terraform generation failed: ${getErrorMessage(error)}`);
 			output.show(true);
-			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not generate a draft. Confirm Ollama is running and the configured model is available.'));
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not generate a draft. Confirm the local analyzer and configured model backend are available.'));
 		}
 	}));
 }

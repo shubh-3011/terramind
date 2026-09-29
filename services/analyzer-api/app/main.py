@@ -46,14 +46,6 @@ class GenerateRequest(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=100)
 
 
-class GenerateResponse(BaseModel):
-    status: Literal["completed"]
-    model: str
-    terraform: str
-    syntax_valid: bool
-    validation_scope: str
-
-
 class Finding(BaseModel):
     """A stable, navigable finding; scanner/model results use distinct sources."""
 
@@ -65,6 +57,16 @@ class Finding(BaseModel):
     file: str
     line: int | None = None
     recommendation: str | None = None
+
+
+class GenerateResponse(BaseModel):
+    status: Literal["completed"]
+    model: str
+    terraform: str
+    syntax_valid: bool
+    validation_scope: str
+    findings: list[Finding]
+    service_ratings: list[dict[str, Any]]
 
 
 class AnalyzeResponse(BaseModel):
@@ -301,19 +303,25 @@ def _validated_generation_response(model: str, terraform: str) -> GenerateRespon
     if len(terraform.encode("utf-8")) > 1_000_000:
         raise HTTPException(status_code=502, detail="Generated Terraform exceeds the 1 MB preview limit")
     try:
-        hcl2.loads(terraform)
+        document = hcl2.loads(terraform)
     except Exception as error:  # HCL parser exceptions vary by python-hcl2 version
         raise HTTPException(
             status_code=422,
             detail=f"The model response is not parseable HCL; nothing was written: {_parse_error_message(error)}",
         ) from error
 
+    findings = _static_security_findings(document, terraform, "main.tf")
+    from app.ratings import build_service_ratings
+
+    service_ratings = build_service_ratings([document], findings)
     return GenerateResponse(
         status="completed",
         model=model,
         terraform=terraform,
         syntax_valid=True,
-        validation_scope="HCL syntax parsing only; provider schemas, references, scanners, costs, and deployment behavior are not verified.",
+        validation_scope="HCL syntax parsing and TerraMind static security heuristics only; provider schemas, references, external scanners, costs, and deployment behavior are not verified.",
+        findings=findings,
+        service_ratings=service_ratings,
     )
 
 

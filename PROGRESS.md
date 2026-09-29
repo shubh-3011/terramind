@@ -1,6 +1,6 @@
 # TerraMind progress log
 
-> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; opt-in scanner adapters, evidence-based/unknown ratings, and an attributed AWS SFT pipeline are implemented. The 26-test API/data/training suite and extension compilation (0 TypeScript errors) pass. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA. Their smoke outputs failed meaningful correctness gates (provider schema errors and HCL parse failure); no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
+> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; generated HCL now receives TerraMind static security checks and evidence-limited service ratings before preview. Opt-in scanner adapters, evidence-based/unknown workspace ratings, and an attributed AWS SFT pipeline are implemented. The 27-test API/data/training suite and extension compilation (0 TypeScript errors) pass. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA. Their smoke outputs failed meaningful correctness gates (provider schema errors and HCL parse failure); no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
 
 This file records real work, decisions, tests, and blockers and is included in the private GitHub repository by owner decision. Add an entry for each meaningful work session; do not claim unrun tests or unimplemented features.
 
@@ -18,9 +18,18 @@ This file records real work, decisions, tests, and blockers and is included in t
 | M1 - Deterministic analyzer | Partial | HCL parsing, AWS heuristic rules, opt-in CLI/scanner adapters, API tests, and Problems diagnostics; workspace authorization and live tool tests remain. |
 | M2 - Dataset pipeline | Partial | Pinned 46-row AWS risk dataset plus a license-aware SFT preparation pipeline; locally prepared 43,561 train / 2,229 validation rows; larger independent risk labels remain. |
 | M3 - ML baseline | Partial | Grouped OOF logistic baseline, pair-group bootstrap intervals, and portable inference; tiny sample, no external holdout. |
-| M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview and explicit save, per-service evidence ratings; runtime UI tests remain. |
+| M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview and explicit save; generated previews now log static findings and evidence-limited ratings; runtime UI tests remain. |
 | M5 - Local AI workflow | Partial | Ollama and optional Transformers-backed generation with preview/save; two short CUDA LoRA runs completed. One output passed HCL syntax but failed AWS provider v6.66.0 schema validation (5 errors); another failed HCL parsing. Model quality remains unproven. |
-| M6 - Demo hardening | Partial | 26 API/data/training-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+| M6 - Demo hardening | Partial | 27 API/data/training-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+
+### 2026-09-29 - Analyze generated Terraform before preview
+
+**Implemented and verified locally**
+
+- The generation API now parses the generated configuration once, runs TerraMind's existing deterministic AWS security checks in memory, and returns findings plus evidence-limited service ratings alongside the HCL. It does not write files or initialize Terraform providers.
+- The built-in Generate command records those findings and service dimensions in the TerraMind output channel and reports error/warning counts in the pre-save review prompt. Provider schema/reference compatibility, external scanners, cost, uptime, scalability, and deployment behavior remain explicitly unverified.
+- Added a test using an insecure generated public-SSH security group; the response includes `TM-NET-001`, a limited networking security rating, and syntax-vs-provider validation limits. Analyzer suite: 27 passing. TerraMind extension compile: 0 TypeScript errors.
+- The API creates only preview content; the existing explicit in-workspace save/overwrite confirmation remains required.
 
 ### 2026-09-29 - Local generation, evidence ratings, tools, and SFT preparation
 

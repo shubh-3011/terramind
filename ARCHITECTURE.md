@@ -23,7 +23,7 @@ The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Analyz
 | Terraform diagnostics | Display tool findings and compatibility errors inline at relevant `.tf` locations. |
 | TerraMind analysis panel | Show tool status, overall ML risk, service ratings, evidence, and actions. |
 | Generate Infrastructure dialog | Collect free-text intent and constraints; structured region/resource/workload fields remain planned. |
-| Draft preview | Show generated HCL before the user chooses an in-workspace path; only HCL syntax is verified. |
+| Draft preview | Show generated HCL plus TerraMind static AWS findings and evidence-limited service ratings before the user chooses an in-workspace path; provider compatibility remains unverified. |
 
 ## Rating contract
 
@@ -85,7 +85,19 @@ When a compatible model artifact exists and every Terraform file parses, the API
 
 ### `POST /v1/generate` (implemented, local model required)
 
-Request contains a bounded description, constraints, and optional installed Ollama model name. The API talks only to loopback Ollama, returns parseable HCL only, and never writes files. The editor previews it; saving is user initiated.
+Request contains a bounded description, constraints, and optional installed Ollama model name. The API talks only to loopback Ollama by default or an explicitly configured local Transformers model. It parses the HCL, runs the existing deterministic security rules in memory, and returns findings plus limited service ratings without writing files. The editor previews the code and findings; saving is user initiated. Provider schemas, references, external scanners, costs, and runtime/deployment behavior are not validated by this endpoint.
+
+Response includes the HCL and scope disclaimer, and the same finding/service-rating shapes used by workspace analysis:
+
+```json
+{
+  "status": "completed",
+  "syntax_valid": true,
+  "validation_scope": "HCL syntax parsing and TerraMind static security heuristics only; provider schemas ... are not verified.",
+  "findings": [{"id": "main.tf:TM-NET-001:2", "source": "terramind-rules", "rule_id": "TM-NET-001", "severity": "error", "file": "main.tf", "line": 2, "message": "..."}],
+  "service_ratings": [{"service": "networking", "resource_count": 1, "dimensions": {"security": {"score": 65, "status": "limited", "evidence_finding_ids": ["main.tf:TM-NET-001:2"]}, "reliability": {"score": null, "status": "insufficient_information"}}}]
+}
+```
 
 ### `POST /v1/repair-proposals`
 

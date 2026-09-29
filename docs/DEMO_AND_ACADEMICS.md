@@ -6,10 +6,11 @@
 2. Run **TerraMind: Analyze Workspace**.
 3. Show HCL parse diagnostics and the current network, IAM, S3, ECR, EC2, and EBS static rules in Problems, including dynamic ingress resolution/review behavior.
 4. Show the experimental, uncalibrated model estimate and its training-set limits; distinguish it from deterministic findings.
-5. Optionally enable external tools only on a trusted workspace and show explicit passed/failed/not-run states; no `init`, `plan`, or `apply` is run.
-6. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
+5. Generate an intentionally unsafe Terraform draft; show that static findings and limited ratings are returned before preview/save. Explain that this is not provider schema validation.
+6. Optionally enable external tools only on a trusted workspace and show explicit passed/failed/not-run states; no `init`, `plan`, or `apply` is run.
+7. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
 
-Until the fork launches, run the 19 API/ML/data-preparation tests and call the API directly against an intentionally vulnerable benchmark fixture to demonstrate the backend slice. Generation needs a live local Ollama model and has not yet been demonstrated end-to-end. The extension compiles separately, but this does not establish a successful full Code-OSS build.
+The API/ML/data/training suite has 27 passing tests, including a mocked generated draft that demonstrates the static security findings and service-rating response. The 0.6B and 1.7B LoRA smoke models were also exercised end-to-end; both failed meaningful generation quality checks. The default Ollama generation path still needs a live model and the full fork launch remains unverified. Extension compilation alone does not establish a successful full Code-OSS build.
 
 ## Planned final demo (5-7 minutes)
 
