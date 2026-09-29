@@ -40,6 +40,7 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The built-in extension now sends VS Code's `workspace.isTrusted` state with analysis and generation requests. The API skips Terraform, TFLint, and Checkov execution when the workspace is in Restricted Mode, even if the user setting is enabled, and reports the reason in each check status.
 - Added tests proving the analyze and generate paths do not invoke external processes for an untrusted workspace. Analyzer suite: 36 passing.
 - Verified the extension sources with the bundled native TypeScript compiler: `node_modules/.bin/tsc --noEmit -p extensions/terramind-core/tsconfig.json` completed with exit code 0 and no diagnostics. This is a typecheck, not the full Code-OSS extension packaging build.
+- Pushed commit `1e775d18` to `testing`; PR #6 is still open. GitHub run #24 for the ML validation failed before starting due to the account payment/spending-limit block. The next pushed evaluator commit `ce4d57b3` has a queued ML job at the latest inspection; no new passing hosted build/artifact is available yet.
 
 ### 2026-09-29 - Measure provider compatibility in local generation evaluations
 
@@ -49,6 +50,7 @@ This file records real work, decisions, tests, and blockers and is included in t
 - When selected, each generation request explicitly opts into `terraform validate` against the installed local cache; no provider workspace path, prompt, or Terraform source is written to the aggregate report. No `init`, `plan`, or `apply` is run. The CLI help warns that Terraform provider plugins execute.
 - Added tests for accepted schema metric reporting, provider-path privacy, and preflight refusal of missing caches. Analyzer/data/training/evaluation suite: 38 passing. Extension TypeScript project check: exit code 0, no diagnostics.
 - This compatibility metric still does not prove semantic correctness, security, runtime behavior, cost, availability, or model quality. The 3-example smoke result remains far too small for quality conclusions.
+- Pushed commit `ce4d57b3` to `testing`. At inspection, its ML validation run #26 failed before job start with the same GitHub payment/spending-limit notice; related PR checks were queued. Six pull requests remain open (#6 and Dependabot #1-#5). Inspection of old-base PR #1 and #2 checks found a concrete Linux CI defect: Electron unit tests invoke `./scripts/test.sh` directly and fail with “Permission denied” (exit 126). The fix (`bash ./scripts/test.sh`) exists on `testing`, but these PRs have not tested against that fix. Keep them open and unmerged until the base workflow is fixed and their required checks pass.
 - This is a Restricted Mode guard in the first-party extension workflow, not API authentication: callers can forge the JSON trust flag. The service must remain bound to loopback; a stronger authenticated workspace authorization mechanism remains open.
 
 ### 2026-09-29 - Analyze generated Terraform before preview
