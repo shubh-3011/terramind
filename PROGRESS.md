@@ -56,9 +56,9 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The open Dependabot PRs likewise have failing and queued upstream Code-OSS checks. No PR was merged or closed, and `main` was not changed. Merging is deferred until failures are understood and required checks pass.
 - A root-wide `pytest` invocation was not a valid project test command because it collected unrelated VS Code Copilot fixture tests; the supported analyzer suite from `services/analyzer-api` passed 22 tests.
 
-**Current GitHub check (2026-09-29, after push `8013cea4`)**
+**Current GitHub check (2026-09-29, after push `9010c3e8`)**
 
-- PR #6 tracks `testing` at `8013cea4`. The new `TerraMind ML validation` run #12 failed after 5 seconds; its annotation explicitly says the job was not started because recent account payments failed or the spending limit needs to be increased. The new Code OSS, CodeQL, Monaco, component-fixtures, chat-lib, telemetry, and packaging runs were still failing/queued at inspection; do not treat these as source-level failures until GitHub actually starts their jobs.
+- PR #6 tracks `testing` at `9010c3e8`. The new `TerraMind ML validation` run #16 failed after 5 seconds; its annotation explicitly says the job was not started because recent account payments failed or the spending limit needs to be increased. The new Code OSS and component-fixtures runs were still queued; chat-lib, telemetry, and Windows/Linux packaging runs surfaced failures after 5–8 seconds. Do not treat these quick failures as source-level test failures until the jobs actually start. The account blocker was independently confirmed on this new commit.
 - The five Dependabot PRs remain open with incomplete/failing upstream checks (11–13 failures and 12 incomplete per PR in the last full status snapshot); several checks succeeded, but none of those PRs was green in that snapshot.
 - Six PRs remain open (#6 plus #1–#5); none was merged or closed, and `main` is unchanged. Required checks cannot be cleared by changing source while GitHub refuses to start jobs. The repo owner needs to resolve the GitHub account payment/spending-limit notice in **Settings → Billing & plans**, then rerun checks. After that, inspect actual code failures and only merge PRs whose required checks pass.
 
