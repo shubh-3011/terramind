@@ -47,11 +47,11 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The open Dependabot PRs likewise have failing and queued upstream Code-OSS checks. No PR was merged or closed, and `main` was not changed. Merging is deferred until failures are understood and required checks pass.
 - A root-wide `pytest` invocation was not a valid project test command because it collected unrelated VS Code Copilot fixture tests; the supported analyzer suite from `services/analyzer-api` passed 22 tests.
 
-**Current GitHub check (2026-09-29, read after sign-in)**
+**Current GitHub check (2026-09-29, after push `8013cea4`)**
 
-- PR #6 tracks `testing` at `0a9887fe`; GitHub reports 23 failed, 11 incomplete/queued, and 1 skipped check. Annotations on the failed runs say jobs were not started because recent account payments failed or the spending limit needs to be increased. This is an account/billing execution block, not evidence those jobs tested and rejected the source.
-- Dependabot PRs #1–#5 also have incomplete/failing upstream checks (11–13 failures and 12 incomplete per PR in the latest check summaries); several checks succeeded, but the PRs are not green.
-- No PR was merged or closed, and `main` is unchanged. Required checks cannot be cleared by changing source while GitHub refuses to start them. The repo owner needs to resolve the GitHub account payment/spending-limit notice in **Settings → Billing & plans**, then rerun checks. After that, inspect actual code failures and only merge PRs whose required checks pass.
+- PR #6 tracks `testing` at `8013cea4`. The new `TerraMind ML validation` run #12 failed after 5 seconds; its annotation explicitly says the job was not started because recent account payments failed or the spending limit needs to be increased. The new Code OSS, CodeQL, Monaco, component-fixtures, chat-lib, telemetry, and packaging runs were still failing/queued at inspection; do not treat these as source-level failures until GitHub actually starts their jobs.
+- The five Dependabot PRs remain open with incomplete/failing upstream checks (11–13 failures and 12 incomplete per PR in the last full status snapshot); several checks succeeded, but none of those PRs was green in that snapshot.
+- Six PRs remain open (#6 plus #1–#5); none was merged or closed, and `main` is unchanged. Required checks cannot be cleared by changing source while GitHub refuses to start jobs. The repo owner needs to resolve the GitHub account payment/spending-limit notice in **Settings → Billing & plans**, then rerun checks. After that, inspect actual code failures and only merge PRs whose required checks pass.
 
 ### 2026-09-29 - CUDA LoRA training and local Transformers generation path
 
