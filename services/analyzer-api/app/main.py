@@ -30,6 +30,9 @@ MAX_GENERATION_REPAIRS = 1
 
 MAX_TERRAFORM_FILES = 500
 MAX_FILE_BYTES = 1_000_000
+DEFAULT_HF_MAX_NEW_TOKENS = 384
+MIN_HF_MAX_NEW_TOKENS = 128
+MAX_HF_MAX_NEW_TOKENS = 2048
 
 
 class AnalyzeRequest(BaseModel):
@@ -362,7 +365,12 @@ def _load_transformers_model(model_path: str):
     if not torch.cuda.is_available():
         raise RuntimeError("The configured local Transformers model requires CUDA")
     dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, trust_remote_code=False)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path,
+        local_files_only=True,
+        trust_remote_code=False,
+        fix_mistral_regex=True,
+    )
     model = AutoModelForCausalLM.from_pretrained(
         model_path, dtype=dtype, local_files_only=True, trust_remote_code=False,
     ).to("cuda")
@@ -394,12 +402,26 @@ def _generate_with_transformers(model_path: str, prompt: str) -> tuple[str, str]
     encoded = {name: tensor.to("cuda") for name, tensor in encoded.items()}
     try:
         with _TRANSFORMERS_GENERATION_LOCK, torch.inference_mode():
-            output_ids = model.generate(**encoded, max_new_tokens=2048, do_sample=False)
+            output_ids = model.generate(
+                **encoded,
+                max_new_tokens=_transformers_max_new_tokens(),
+                do_sample=False,
+            )
     except Exception as error:
         raise HTTPException(status_code=502, detail="Local Transformers model failed during generation") from error
     generated_ids = output_ids[0, encoded["input_ids"].shape[1]:]
     generated = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
     return f"transformers:{Path(resolved_path).name}", generated
+
+
+def _transformers_max_new_tokens() -> int:
+    """Return a bounded local generation limit suitable for interactive use."""
+    configured_value = os.environ.get("TERRAMIND_HF_MAX_NEW_TOKENS", str(DEFAULT_HF_MAX_NEW_TOKENS))
+    try:
+        configured_limit = int(configured_value)
+    except ValueError:
+        return DEFAULT_HF_MAX_NEW_TOKENS
+    return min(MAX_HF_MAX_NEW_TOKENS, max(MIN_HF_MAX_NEW_TOKENS, configured_limit))
 
 
 def _validated_generation_response(
