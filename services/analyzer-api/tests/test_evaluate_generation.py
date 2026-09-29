@@ -22,7 +22,7 @@ def test_evaluation_reports_aggregate_metrics_without_storing_code(tmp_path):
     validation.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
     calls = []
 
-    def request(_api_url, prompt):
+    def request(_api_url, prompt, _provider_workspace):
         calls.append(prompt)
         resource_type = "aws_instance" if "compute" in prompt else "aws_s3_bucket"
         return 200, {
@@ -83,3 +83,45 @@ def test_evaluation_leaves_resource_f1_unknown_when_output_has_no_resources(tmp_
     assert report["resource_type_micro_precision"] is None
     assert report["resource_type_micro_recall"] == 0
     assert report["resource_type_micro_f1"] is None
+
+
+def test_evaluation_reports_provider_schema_acceptance_without_paths_or_code(tmp_path):
+    validation = tmp_path / "validation.jsonl"
+    validation.write_text(json.dumps(_example("aws_s3_bucket", "storage")), encoding="utf-8")
+    workspace = tmp_path / "trusted-provider-cache"
+    (workspace / ".terraform" / "providers").mkdir(parents=True)
+    (workspace / ".terraform.lock.hcl").write_text("fixture lock", encoding="utf-8")
+    calls = []
+
+    def request(_api_url, prompt, provider_workspace):
+        calls.append((prompt, provider_workspace))
+        return 200, {
+            "model": "local-test-model",
+            "terraform": 'resource "aws_s3_bucket" "generated" {}',
+            "checks": {"terraform_validate": "passed"},
+        }, 0.25, None
+
+    report = evaluate_generation(
+        validation, "http://127.0.0.1:8000", request_fn=request,
+        provider_workspace=workspace,
+    )
+
+    assert report["provider_validation_status_counts"] == {"passed": 1}
+    assert report["provider_schema_valid_count"] == 1
+    assert calls[0][1] == str(workspace.resolve())
+    assert str(workspace) not in json.dumps(report)
+    assert "resource \"aws_s3_bucket\"" not in json.dumps(report)
+
+
+def test_evaluation_requires_preinitialized_provider_workspace_before_generation(tmp_path):
+    validation = tmp_path / "validation.jsonl"
+    validation.write_text(json.dumps(_example("aws_instance", "compute")), encoding="utf-8")
+
+    def forbidden_request(*_args):
+        raise AssertionError("generation must not run without the requested provider cache")
+
+    with pytest.raises(ValueError, match="initialized workspace"):
+        evaluate_generation(
+            validation, "http://127.0.0.1:8000", request_fn=forbidden_request,
+            provider_workspace=tmp_path / "missing-cache",
+        )

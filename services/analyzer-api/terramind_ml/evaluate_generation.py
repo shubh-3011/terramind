@@ -21,7 +21,7 @@ from typing import Any, Callable
 
 
 RequestResult = tuple[int, dict[str, Any] | None, float, str | None]
-RequestFunction = Callable[[str, str], RequestResult]
+RequestFunction = Callable[[str, str, str | None], RequestResult]
 
 
 def _validate_local_api_url(value: str) -> str:
@@ -40,8 +40,13 @@ def _validate_local_api_url(value: str) -> str:
     return value.rstrip("/")
 
 
-def _request_generation(api_url: str, description: str) -> RequestResult:
-    payload = json.dumps({"description": description}).encode("utf-8")
+def _request_generation(api_url: str, description: str, provider_workspace: str | None = None) -> RequestResult:
+    payload = json.dumps({
+        "description": description,
+        "workspace_path": provider_workspace,
+        "run_external_tools": provider_workspace is not None,
+        "workspace_trusted": provider_workspace is not None,
+    }).encode("utf-8")
     request = urllib.request.Request(
         f"{api_url}/v1/generate",
         data=payload,
@@ -91,6 +96,7 @@ def evaluate_generation(
     max_examples: int = 8,
     seed: int = 17,
     request_fn: RequestFunction = _request_generation,
+    provider_workspace: Path | None = None,
 ) -> dict[str, Any]:
     """Measure parse success and per-resource-type overlap on a fixed split."""
     import hcl2
@@ -98,6 +104,14 @@ def evaluate_generation(
     api_url = _validate_local_api_url(api_url)
     if max_examples < 1:
         raise ValueError("max_examples must be positive")
+    if provider_workspace is not None:
+        provider_workspace = provider_workspace.expanduser().resolve()
+        if (
+            not provider_workspace.is_dir()
+            or not (provider_workspace / ".terraform.lock.hcl").is_file()
+            or not (provider_workspace / ".terraform" / "providers").is_dir()
+        ):
+            raise ValueError("Provider evaluation requires a trusted, initialized workspace with a lockfile and local provider cache")
     rows = [
         json.loads(line) for line in validation_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
@@ -114,6 +128,7 @@ def evaluate_generation(
     predicted_resources = 0
     expected_resources = 0
     matching_resources = 0
+    provider_checks: Counter[str] = Counter()
 
     for row in sampled:
         messages = row.get("messages")
@@ -127,7 +142,9 @@ def evaluate_generation(
         except Exception as error:
             raise ValueError("Prepared validation answer no longer parses as HCL") from error
 
-        status, body, elapsed, error = request_fn(api_url, prompt)
+        status, body, elapsed, error = request_fn(
+            api_url, prompt, str(provider_workspace) if provider_workspace else None,
+        )
         latencies.append(elapsed)
         if status != 200 or body is None:
             errors[str(status)] += 1
@@ -136,6 +153,11 @@ def evaluate_generation(
         model = body.get("model")
         if isinstance(model, str):
             model_names[model] += 1
+        checks = body.get("checks")
+        if isinstance(checks, dict):
+            provider_status = checks.get("terraform_validate")
+            if isinstance(provider_status, str):
+                provider_checks[provider_status.split(":", maxsplit=1)[0]] += 1
         generated = body.get("terraform")
         if not isinstance(generated, str) or not generated.strip():
             errors["invalid_response"] += 1
@@ -178,12 +200,15 @@ def evaluate_generation(
             "generated": predicted_resources,
             "reference": expected_resources,
         },
+        "provider_validation_status_counts": dict(provider_checks),
+        "provider_schema_valid_count": provider_checks["passed"],
         "mean_generation_seconds": statistics.mean(latencies) if latencies else None,
         "backend_models": dict(model_names),
         "errors_by_kind": dict(errors),
         "limitations": [
             "Prompts are back-translations of source HCL; this is not an independent user-intent benchmark.",
             "Resource type overlap does not measure semantic correctness, provider compatibility, security, cost, uptime, or scalability.",
+            "Provider-schema results are included only when an initialized, explicitly supplied provider cache was used; they do not verify runtime behavior or deployment safety.",
             "A parseable output is not a valid or safe Terraform deployment.",
             "Only aggregate metrics and hashed example IDs are written; raw prompts and code are not retained.",
         ],
@@ -198,10 +223,17 @@ def main() -> int:
     parser.add_argument("--api-url", default="http://127.0.0.1:8000", help="Loopback analyzer URL only")
     parser.add_argument("--max-examples", type=int, default=8)
     parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument(
+        "--provider-workspace", type=Path,
+        help="Optional trusted initialized workspace with .terraform.lock.hcl and .terraform/providers; local provider plugins will execute during validate",
+    )
     args = parser.parse_args()
 
     try:
-        report = evaluate_generation(args.validation, args.api_url, args.max_examples, args.seed)
+        report = evaluate_generation(
+            args.validation, args.api_url, args.max_examples, args.seed,
+            provider_workspace=args.provider_workspace,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -210,6 +242,7 @@ def main() -> int:
         key: report[key] for key in (
             "evaluated_examples", "parseable_hcl_count", "parseable_hcl_rate",
             "resource_type_micro_f1", "errors_by_kind", "backend_models",
+            "provider_validation_status_counts", "provider_schema_valid_count",
         )
     }, indent=2))
     return 0

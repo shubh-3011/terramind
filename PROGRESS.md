@@ -1,6 +1,6 @@
 # TerraMind progress log
 
-> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; generated HCL receives TerraMind static security checks and evidence-limited service ratings, plus optional preinitialized-cache Terraform provider validation before preview. VS Code Restricted Mode now suppresses optional external tools for both analysis and generated-draft validation. An evaluation harness measures local HCL parse rate and resource-type overlap on the repository-disjoint split. The 36-test API/data/training/evaluation suite passes. The extension project typechecks with the bundled native TypeScript compiler (`tsc --noEmit -p extensions/terramind-core/tsconfig.json`); the Code-OSS gulp compile remains unavailable because this checkout lacks `build/gulpfile.extensions.mjs`. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA; 3-example evaluation of the 0.6B smoke model parsed 1/3 and rejected 2/3, so no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
+> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; generated HCL receives TerraMind static security checks and evidence-limited service ratings, plus optional preinitialized-cache Terraform provider validation before preview. VS Code Restricted Mode now suppresses optional external tools for both analysis and generated-draft validation. An evaluation harness measures local HCL parse rate, resource-type overlap, and optional provider-schema acceptance on the repository-disjoint split. The 38-test API/data/training/evaluation suite passes. The extension project typechecks with the bundled native TypeScript compiler (`tsc --noEmit -p extensions/terramind-core/tsconfig.json`); the Code-OSS gulp compile remains unavailable because this checkout lacks `build/gulpfile.extensions.mjs`. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA; 3-example evaluation of the 0.6B smoke model parsed 1/3 and rejected 2/3, so no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
 
 This file records real work, decisions, tests, and blockers and is included in the private GitHub repository by owner decision. Add an entry for each meaningful work session; do not claim unrun tests or unimplemented features.
 
@@ -20,7 +20,7 @@ This file records real work, decisions, tests, and blockers and is included in t
 | M3 - ML baseline | Partial | Grouped OOF logistic baseline, pair-group bootstrap intervals, and portable inference; tiny sample, no external holdout. |
 | M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview/save, static findings, evidence-limited ratings, VS Code workspace-trust signal, and optional line-specific provider validation; runtime UI tests remain. |
 | M5 - Local AI workflow | Partial | Ollama and optional Transformers-backed generation; optional schema checks against preinitialized providers; two short CUDA LoRA runs completed. One output passed HCL syntax but failed AWS provider v6.66.0 validation (5 errors); another failed HCL parsing. Model quality remains unproven. |
-| M6 - Demo hardening | Partial | 34 API/data/training/evaluation-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+| M6 - Demo hardening | Partial | 38 API/data/training/evaluation-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
 
 ### 2026-09-29 - Validate generated HCL against a local provider cache
 
@@ -40,6 +40,15 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The built-in extension now sends VS Code's `workspace.isTrusted` state with analysis and generation requests. The API skips Terraform, TFLint, and Checkov execution when the workspace is in Restricted Mode, even if the user setting is enabled, and reports the reason in each check status.
 - Added tests proving the analyze and generate paths do not invoke external processes for an untrusted workspace. Analyzer suite: 36 passing.
 - Verified the extension sources with the bundled native TypeScript compiler: `node_modules/.bin/tsc --noEmit -p extensions/terramind-core/tsconfig.json` completed with exit code 0 and no diagnostics. This is a typecheck, not the full Code-OSS extension packaging build.
+
+### 2026-09-29 - Measure provider compatibility in local generation evaluations
+
+**Implemented and verified locally**
+
+- Extended the repository-disjoint generation evaluator with optional provider-schema acceptance counts using `--provider-workspace`. Before sending any prompts, the evaluator verifies the supplied workspace exists and has both `.terraform.lock.hcl` and `.terraform/providers`.
+- When selected, each generation request explicitly opts into `terraform validate` against the installed local cache; no provider workspace path, prompt, or Terraform source is written to the aggregate report. No `init`, `plan`, or `apply` is run. The CLI help warns that Terraform provider plugins execute.
+- Added tests for accepted schema metric reporting, provider-path privacy, and preflight refusal of missing caches. Analyzer/data/training/evaluation suite: 38 passing. Extension TypeScript project check: exit code 0, no diagnostics.
+- This compatibility metric still does not prove semantic correctness, security, runtime behavior, cost, availability, or model quality. The 3-example smoke result remains far too small for quality conclusions.
 - This is a Restricted Mode guard in the first-party extension workflow, not API authentication: callers can forge the JSON trust flag. The service must remain bound to loopback; a stronger authenticated workspace authorization mechanism remains open.
 
 ### 2026-09-29 - Analyze generated Terraform before preview
