@@ -1,6 +1,6 @@
 # TerraMind progress log
 
-> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; generated HCL now receives TerraMind static security checks and evidence-limited service ratings before preview. Opt-in scanner adapters, evidence-based/unknown workspace ratings, and an attributed AWS SFT pipeline are implemented. The 27-test API/data/training suite and extension compilation (0 TypeScript errors) pass. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA. Their smoke outputs failed meaningful correctness gates (provider schema errors and HCL parse failure); no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
+> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; generated HCL now receives TerraMind static security checks and evidence-limited service ratings before preview. An evaluation harness measures local HCL parse rate and resource-type overlap on the repository-disjoint split. The 31-test API/data/training/evaluation suite and extension compilation (0 TypeScript errors) pass. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA; 3-example evaluation of the 0.6B smoke model parsed 1/3 and rejected 2/3, so no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
 
 This file records real work, decisions, tests, and blockers and is included in the private GitHub repository by owner decision. Add an entry for each meaningful work session; do not claim unrun tests or unimplemented features.
 
@@ -20,7 +20,7 @@ This file records real work, decisions, tests, and blockers and is included in t
 | M3 - ML baseline | Partial | Grouped OOF logistic baseline, pair-group bootstrap intervals, and portable inference; tiny sample, no external holdout. |
 | M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview and explicit save; generated previews now log static findings and evidence-limited ratings; runtime UI tests remain. |
 | M5 - Local AI workflow | Partial | Ollama and optional Transformers-backed generation with preview/save; two short CUDA LoRA runs completed. One output passed HCL syntax but failed AWS provider v6.66.0 schema validation (5 errors); another failed HCL parsing. Model quality remains unproven. |
-| M6 - Demo hardening | Partial | 27 API/data/training-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+| M6 - Demo hardening | Partial | 31 API/data/training/evaluation-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
 
 ### 2026-09-29 - Analyze generated Terraform before preview
 
@@ -30,6 +30,15 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The built-in Generate command records those findings and service dimensions in the TerraMind output channel and reports error/warning counts in the pre-save review prompt. Provider schema/reference compatibility, external scanners, cost, uptime, scalability, and deployment behavior remain explicitly unverified.
 - Added a test using an insecure generated public-SSH security group; the response includes `TM-NET-001`, a limited networking security rating, and syntax-vs-provider validation limits. Analyzer suite: 27 passing. TerraMind extension compile: 0 TypeScript errors.
 - The API creates only preview content; the existing explicit in-workspace save/overwrite confirmation remains required.
+
+### 2026-09-29 - Add reproducible local generation evaluation
+
+**Implemented and verified locally**
+
+- Added a deterministic held-out evaluation CLI that calls only a loopback analyzer endpoint and reports HCL parse rate, resource-type micro precision/recall/F1, latency, backend name, dataset/manifest hashes, and hashed example identifiers.
+- The report intentionally excludes prompts, reference/generated Terraform source, and source repository paths. It documents that the corpus uses back-translated prompts and that resource overlap is not semantic/provider correctness.
+- Ran the merged Qwen3-0.6B smoke model over 3 repository-disjoint validation examples (seed 29): 1/3 outputs parsed; 2/3 returned HTTP 422; resource-type micro-F1 0.286; mean request latency 83.5 seconds. This small result is evidence of current weakness and that the evaluator works, not a quality estimate.
+- Added 4 evaluator tests (loopback enforcement, metric aggregation/no raw code in report, parse-failure accounting, and unknown F1 when no resources were generated); analyzer suite now passes 31 tests. Extension compile remains 0 TypeScript errors.
 
 ### 2026-09-29 - Local generation, evidence ratings, tools, and SFT preparation
 
@@ -56,9 +65,9 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The open Dependabot PRs likewise have failing and queued upstream Code-OSS checks. No PR was merged or closed, and `main` was not changed. Merging is deferred until failures are understood and required checks pass.
 - A root-wide `pytest` invocation was not a valid project test command because it collected unrelated VS Code Copilot fixture tests; the supported analyzer suite from `services/analyzer-api` passed 22 tests.
 
-**Current GitHub check (2026-09-29, after push `9010c3e8`)**
+**GitHub check snapshot (2026-09-29, after push `5a9711f5`; the current feature/evaluation push will queue another run)**
 
-- PR #6 tracks `testing` at `9010c3e8`. The new `TerraMind ML validation` run #16 failed after 5 seconds; its annotation explicitly says the job was not started because recent account payments failed or the spending limit needs to be increased. The new Code OSS and component-fixtures runs were still queued; chat-lib, telemetry, and Windows/Linux packaging runs surfaced failures after 5–8 seconds. Do not treat these quick failures as source-level test failures until the jobs actually start. The account blocker was independently confirmed on this new commit.
+- PR #6 tracks `testing`; at this snapshot the follow-up `TerraMind ML validation` run #17, Windows/Linux build #16, Code OSS #26, Monaco #34, Component Fixtures #34, and chat-lib #26 were queued. On the immediately preceding commit, ML run #16 failed after 5 seconds with an explicit annotation that the job was not started because recent account payments failed or the spending limit needs to be increased. This confirms the account blocker; queued or quick-failing checks should not be treated as source-level failures until their jobs actually start.
 - The five Dependabot PRs remain open with incomplete/failing upstream checks (11–13 failures and 12 incomplete per PR in the last full status snapshot); several checks succeeded, but none of those PRs was green in that snapshot.
 - Six PRs remain open (#6 plus #1–#5); none was merged or closed, and `main` is unchanged. Required checks cannot be cleared by changing source while GitHub refuses to start jobs. The repo owner needs to resolve the GitHub account payment/spending-limit notice in **Settings → Billing & plans**, then rerun checks. After that, inspect actual code failures and only merge PRs whose required checks pass.
 

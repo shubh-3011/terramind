@@ -66,4 +66,18 @@ On this machine, that run used 256 train and 64 repository-disjoint validation e
 
 The 0.6B model returned HCL that passed parsing, but Terraform 1.16.4 with AWS provider 6.66.0 rejected it with five schema/type errors, including unsupported S3 arguments/blocks and an invalid resource type. The 1.7B model returned unparsable HCL on the same smoke request (HTTP 422). Therefore both remain research artifacts; do not use these smoke adapters to generate real infrastructure. Ollama 0.18.0 rejected importing merged Qwen3 Safetensors (`unsupported architecture "Qwen3ForCausalLM"`), so the current configured inference route for these merged weights is the optional Transformers backend above; do not advertise them as Ollama models.
 
+### Run a local generation evaluation
+
+With the analyzer running locally and `TERRAMIND_HF_MODEL_PATH` pointing to a merged model (or with Ollama selected as the local backend), run this from `services/analyzer-api`:
+
+```powershell
+..\..\.build\sft-train-venv\Scripts\python.exe -m terramind_ml.evaluate_generation `
+  --validation ..\..\.build\terramind-terraform-sft\validation.jsonl `
+  --output ..\..\.build\generation-eval.json `
+  --max-examples 8 `
+  --seed 29
+```
+
+The evaluator refuses non-loopback API URLs, samples deterministically, and writes aggregate HCL-parse/resource-type-overlap metrics, latency, split/manifest hashes, and hashed example identifiers. It does not save prompts, source snippets, reference HCL, or generated HCL. Resource overlap is a basic structural signal, not semantic or provider validation; resource-type precision/recall/F1 are computed only on parseable generations. On the current Qwen3-0.6B smoke adapter, seed 29 over 3 held-out examples yielded 1 parseable HCL response and 2 HTTP 422 parse rejections (0.33 parse rate, resource-type micro-F1 0.286 on the one parseable example; mean response latency 83.5 seconds). Three examples are far too few to estimate model quality; this run verifies the measurement pipeline and documents poor observed behavior only.
+
 The separate default `qwen2.5-coder:3b` Ollama model uses the Qwen Research License, which restricts use to non-commercial purposes. Review the upstream license before commercial use or model/adapter redistribution. The existing risk model can be retrained from its small labeled benchmark using the commands in [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md).

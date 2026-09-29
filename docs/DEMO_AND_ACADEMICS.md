@@ -10,7 +10,7 @@
 6. Optionally enable external tools only on a trusted workspace and show explicit passed/failed/not-run states; no `init`, `plan`, or `apply` is run.
 7. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
 
-The API/ML/data/training suite has 27 passing tests, including a mocked generated draft that demonstrates the static security findings and service-rating response. The 0.6B and 1.7B LoRA smoke models were also exercised end-to-end; both failed meaningful generation quality checks. The default Ollama generation path still needs a live model and the full fork launch remains unverified. Extension compilation alone does not establish a successful full Code-OSS build.
+The API/ML/data/training/evaluation suite has 31 passing tests, including a mocked generated draft that demonstrates static security findings/service ratings and evaluator tests that ensure reports do not retain raw prompts/code and keep undefined metrics unknown. A 3-example local 0.6B held-out evaluation parsed 1 response and rejected 2 as invalid HCL; this tiny sample does not establish quality. The full fork launch remains unverified. Extension compilation alone does not establish a successful full Code-OSS build.
 
 ## Planned final demo (5-7 minutes)
 
