@@ -51,7 +51,7 @@ jobs:
       - name: Rebuild and verify derived dataset
         run: |
           python -m terramind_ml.dataset --source ../../.build/iacsecbench --output ../../.build/terraform-risk-v1.csv
-          cmp data/processed/terraform-risk-v1.csv .build/terraform-risk-v1.csv
+          cmp ../../data/processed/terraform-risk-v1.csv ../../.build/terraform-risk-v1.csv
         working-directory: services/analyzer-api
 
       - name: Run analyzer and ML tests
