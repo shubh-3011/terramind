@@ -252,6 +252,22 @@ def test_generate_runs_static_security_checks_before_preview():
     assert "static security heuristics only" in generated["validation_scope"]
 
 
+def test_generate_includes_structured_inventory_and_topology_in_model_prompt():
+    with patch("app.main._generate_with_ollama", return_value=("test-model", 'resource "aws_s3_bucket" "data" {}')) as generate:
+        response = client.post("/v1/generate", json={
+            "description": "Build a small application environment",
+            "resource_inventory": "2 EC2 instances, 1 VPC, 1 S3 bucket",
+            "connectivity": "Instances stay in private subnets and read from the bucket",
+            "constraints": "ap-south-1; no public SSH",
+        })
+
+    assert response.status_code == 200
+    prompt = generate.call_args.args[2]
+    assert "Requested resources and counts:\n2 EC2 instances, 1 VPC, 1 S3 bucket" in prompt
+    assert "Requested connections and traffic flow:\nInstances stay in private subnets and read from the bucket" in prompt
+    assert "Other constraints:\nap-south-1; no public SSH" in prompt
+
+
 def test_generate_can_opt_into_cached_provider_validation(tmp_path):
     from app.main import Finding
 

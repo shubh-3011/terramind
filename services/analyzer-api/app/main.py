@@ -44,6 +44,8 @@ class GenerateRequest(BaseModel):
     """A bounded natural-language request for local Terraform generation."""
 
     description: str = Field(min_length=10, max_length=10_000)
+    resource_inventory: str = Field(default="", max_length=4_000)
+    connectivity: str = Field(default="", max_length=4_000)
     constraints: str = Field(default="", max_length=10_000)
     model: str | None = Field(default=None, min_length=1, max_length=100)
     workspace_path: str | None = Field(default=None, max_length=4096)
@@ -203,7 +205,9 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
         "when needed, use variables for environment-specific values, prefer secure defaults, and do not include "
         "credentials or run/deploy instructions. Make assumptions explicit as HCL comments.\n\n"
         f"Infrastructure requested:\n{request.description}\n\n"
-        f"Constraints and connectivity:\n{request.constraints or 'No extra constraints supplied.'}\n"
+        f"Requested resources and counts:\n{request.resource_inventory or 'No explicit inventory supplied; infer only what the description requires.'}\n\n"
+        f"Requested connections and traffic flow:\n{request.connectivity or 'No explicit topology supplied; state assumptions in HCL comments.'}\n\n"
+        f"Other constraints:\n{request.constraints or 'No extra constraints supplied.'}\n"
     )
     hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
     if hf_model_path:

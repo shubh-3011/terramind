@@ -210,9 +210,19 @@ export function activate(context: vscode.ExtensionContext): void {
 		if (!requirements?.trim()) {
 			return;
 		}
+		const resourceInventory = await vscode.window.showInputBox({
+			prompt: vscode.l10n.t('List resource types and desired counts. This field is optional.'),
+			placeHolder: vscode.l10n.t('Example: 2 EC2 instances, 1 VPC, 1 S3 bucket'),
+			ignoreFocusOut: true
+		});
+		const connectivity = await vscode.window.showInputBox({
+			prompt: vscode.l10n.t('Describe how resources should connect and how traffic should flow. This field is optional.'),
+			placeHolder: vscode.l10n.t('Example: both instances in private subnets; instances read from the bucket; no public SSH'),
+			ignoreFocusOut: true
+		});
 		const constraints = await vscode.window.showInputBox({
 			prompt: vscode.l10n.t('Add region, traffic, budget, availability, and security constraints.'),
-			placeHolder: vscode.l10n.t('Example: ap-south-1, no public SSH, low traffic, no fixed monthly budget'),
+			placeHolder: vscode.l10n.t('Example: ap-south-1, low traffic, target 99.9% availability; no fixed monthly budget'),
 			ignoreFocusOut: true
 		});
 		try {
@@ -220,9 +230,9 @@ export function activate(context: vscode.ExtensionContext): void {
 			const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
 			const generated = await vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
-				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with local Ollama'),
+				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with the configured local model'),
 				cancellable: false
-			}, () => requestGeneration(requirements.trim(), constraints?.trim() ?? '', model, workspaceFolder.uri.fsPath, runExternalTools, vscode.workspace.isTrusted));
+			}, () => requestGeneration(requirements.trim(), resourceInventory?.trim() ?? '', connectivity?.trim() ?? '', constraints?.trim() ?? '', model, workspaceFolder.uri.fsPath, runExternalTools, vscode.workspace.isTrusted));
 			if (!generated.syntax_valid) {
 				throw new Error('The generated draft did not pass HCL syntax parsing.');
 			}
@@ -306,6 +316,8 @@ async function requestAnalysis(workspacePath: string, runExternalTools: boolean,
 
 async function requestGeneration(
 	description: string,
+	resourceInventory: string,
+	connectivity: string,
 	constraints: string,
 	model: string,
 	workspacePath: string,
@@ -318,6 +330,8 @@ async function requestGeneration(
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			description,
+			resource_inventory: resourceInventory,
+			connectivity,
 			constraints,
 			model,
 			workspace_path: workspacePath,
