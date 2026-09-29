@@ -1,6 +1,6 @@
 # TerraMind progress log
 
-> **Current status (2026-09-29):** the branch now includes opt-in scanner adapters, local Ollama generation with review-before-save UX, evidence-based/unknown service ratings, and an attributed AWS SFT data pipeline. API/data suite: 22 passing; extension compile: 0 TypeScript errors. A real local Ollama request returned HCL accepted by the parser. This is syntax-only validation; semantic/provider validation and generative fine-tuning remain incomplete. The prepared corpus contains 43,561 training and 2,229 validation rows after filtering. The project estimate is 60–65%; full desktop packaging and validated fine-tuning remain blockers to 65–70%.
+> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; opt-in scanner adapters, evidence-based/unknown ratings, and an attributed AWS SFT pipeline are implemented. The 26-test API/data/training suite and extension compilation (0 TypeScript errors) pass. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA. Their smoke outputs failed meaningful correctness gates (provider schema errors and HCL parse failure); no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
 
 This file records real work, decisions, tests, and blockers and is included in the private GitHub repository by owner decision. Add an entry for each meaningful work session; do not claim unrun tests or unimplemented features.
 
@@ -8,9 +8,9 @@ This file records real work, decisions, tests, and blockers and is included in t
 
 **Current phase:** M1/M3/M6 - Analyzer and model quality work, plus Windows/Linux alpha packaging pipeline (CI artifacts still need a successful hosted run)
 
-**Next build targets:** verify hosted Windows/Linux package results and PR checks; add approved-workspace boundaries for external tools; train/evaluate a small adapter in a license-compatible CUDA environment; and validate generated modules with Terraform/provider schemas. Do not merge to `main` until required checks pass; macOS billing and Microsoft-only runner configuration remain external blockers for the upstream matrix.
+**Next build targets:** unblock GitHub Actions billing, then rerun required checks; improve and benchmark generation against a curated, independent provider-valid Terraform suite; add approved-workspace boundaries for external tools; verify desktop packages. Do not merge to `main` until required checks pass.
 
-**Overall estimate:** roughly 60–65% of the agreed MVP scope is implemented, based on milestones below—not a schedule forecast. This reflects working local generation, scanner adapters, rating output, and reproducible data preparation. It does not imply production readiness; fine-tuning, repair, provider-aware validation, workspace authorization, and verified desktop packaging remain.
+**Overall estimate:** roughly 65% of the agreed MVP scope is implemented, based on milestone coverage—not a schedule or quality estimate. This includes a reproducible data/training path and optional local Transformers generation. Smoke outputs currently fail correctness gates; this estimate is not a claim that the model is useful or ready. Repair, stronger independent evaluation, workspace authorization, and verified desktop packaging remain.
 
 | Milestone | Status | Evidence / remaining work |
 | --- | --- | --- |
@@ -19,8 +19,8 @@ This file records real work, decisions, tests, and blockers and is included in t
 | M2 - Dataset pipeline | Partial | Pinned 46-row AWS risk dataset plus a license-aware SFT preparation pipeline; locally prepared 43,561 train / 2,229 validation rows; larger independent risk labels remain. |
 | M3 - ML baseline | Partial | Grouped OOF logistic baseline, pair-group bootstrap intervals, and portable inference; tiny sample, no external holdout. |
 | M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview and explicit save, per-service evidence ratings; runtime UI tests remain. |
-| M5 - Local AI workflow | Partial | Ollama generation API and preview/save integration; one real local inference produced HCL accepted by the syntax parser. Fine-tuning, semantic validation, explanations, and repair remain. |
-| M6 - Demo hardening | Partial | 22 API/data tests and reproducible model evaluation exist; clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+| M5 - Local AI workflow | Partial | Ollama and optional Transformers-backed generation with preview/save; two short CUDA LoRA runs completed. One output passed HCL syntax but failed AWS provider v6.66.0 schema validation (5 errors); another failed HCL parsing. Model quality remains unproven. |
+| M6 - Demo hardening | Partial | 26 API/data/training-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
 
 ### 2026-09-29 - Local generation, evidence ratings, tools, and SFT preparation
 
@@ -41,11 +41,35 @@ This file records real work, decisions, tests, and blockers and is included in t
 - Current Python PyTorch is CPU-only; no CUDA training stack has been installed or training run performed.
 - Windows/Linux desktop artifacts and new GitHub checks need hosted verification. Do not merge until required checks are green; runner spending limits can block matrix jobs.
 
-**GitHub state after push**
+**GitHub state after push (initial snapshot; superseded by the current check below)**
 
 - Pushed commit `6ce24288` to the `testing` branch; PR #6 updated automatically. The PR page reports 26 failing checks, 11 queued, and 2 skipped (snapshot at 2026-09-29). The push-triggered TerraMind ML validation and Linux/Windows packaging checks also failed quickly; full logs were not available in the connected page at inspection time, so their root causes are not yet established.
 - The open Dependabot PRs likewise have failing and queued upstream Code-OSS checks. No PR was merged or closed, and `main` was not changed. Merging is deferred until failures are understood and required checks pass.
 - A root-wide `pytest` invocation was not a valid project test command because it collected unrelated VS Code Copilot fixture tests; the supported analyzer suite from `services/analyzer-api` passed 22 tests.
+
+**Current GitHub check (2026-09-29, read after sign-in)**
+
+- PR #6 tracks `testing` at `0a9887fe`; GitHub reports 23 failed, 11 incomplete/queued, and 1 skipped check. Annotations on the failed runs say jobs were not started because recent account payments failed or the spending limit needs to be increased. This is an account/billing execution block, not evidence those jobs tested and rejected the source.
+- Dependabot PRs #1–#5 also have incomplete/failing upstream checks (11–13 failures and 12 incomplete per PR in the latest check summaries); several checks succeeded, but the PRs are not green.
+- No PR was merged or closed, and `main` is unchanged. Required checks cannot be cleared by changing source while GitHub refuses to start them. The repo owner needs to resolve the GitHub account payment/spending-limit notice in **Settings → Billing & plans**, then rerun checks. After that, inspect actual code failures and only merge PRs whose required checks pass.
+
+### 2026-09-29 - CUDA LoRA training and local Transformers generation path
+
+**Implemented and verified locally**
+
+- Added a seeded LoRA SFT command that masks system/user tokens from the loss, pins the base-model revision, stores dataset hashes/metrics, and refuses to run without CUDA. Added a merge command that verifies the base/revision match and creates a local full-model directory.
+- Added an optional generation backend selected only by `TERRAMIND_HF_MODEL_PATH`; it loads local-only model files, requires CUDA, caches the model, serializes generation calls, and reuses the existing HCL parser gate. Ollama remains the default when the variable is unset.
+- Used an ignored Python 3.12/CUDA 12.6 venv and RTX 4060 to train Qwen3-0.6B (Apache-2.0): 256 train / 64 validation examples, 32 update steps, train loss 1.004 and validation loss 0.942. A generated S3 draft parsed as HCL, but Terraform 1.16.4 + AWS provider 6.66.0 rejected it with five schema errors.
+- Trained Qwen3-1.7B at pinned revision `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e` (Apache-2.0): 128 train / 32 validation examples, 16 update steps, train loss 0.913 and validation loss 0.626. These losses are not directly comparable to the 0.6B run because sample size/model differ. Its smoke generation returned HTTP 422 due to unparsable HCL.
+- Merged the 1.7B adapter successfully. Ollama 0.18.0 rejected importing its Safetensors directory as `unsupported architecture "Qwen3ForCausalLM"`; the optional Transformers backend is the working local inference route for the merged model.
+- Added 4 tests for assistant-only masking and local Transformers backend dispatch; final analyzer suite: 26 passed. TerraMind extension compile: 0 TypeScript errors.
+- Installed HashiCorp Terraform 1.16.4 into ignored `.build`; verified its archive SHA-256 against HashiCorp's published checksum. On a throwaway generated-output fixture, `terraform validate -json` correctly reported 5 schema/type errors. No plan/apply ran.
+
+**Not completed / risks**
+
+- The adapters are short smoke runs on a generated/back-translated corpus, not production models. Training/validation loss does not demonstrate valid configurations; independent generation evaluation and larger/better-reviewed Terraform data are needed.
+- The full Transformers model must stay local; merged weights and data are ignored and were not uploaded. The default Ollama Qwen2.5-Coder model is non-commercial under its upstream research license; the fine-tuning path uses pinned Apache-2.0 Qwen3 base revisions.
+- GitHub PR/check state has not been cleared; no merge is authorized by green evidence yet.
 
 ## Log
 

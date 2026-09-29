@@ -37,7 +37,7 @@ It is acceptable to implement part of the product feature as a **bundled interna
 
 ## Current implementation status (2026-09-29)
 
-The current MVP is estimated at roughly 60–65% complete by milestone coverage. Local inference, scanner adapters, evidence ratings, and dataset preparation are implemented, but generative fine-tuning, provider-aware validation, repair, and full desktop build validation remain. See [PROGRESS.md](../PROGRESS.md).
+The current MVP is estimated at roughly 65% complete by milestone coverage. Local inference, scanner adapters, evidence ratings, corpus preparation, a short LoRA smoke training path, and optional Transformers-backed inference are implemented. Current smoke generations fail HCL or AWS provider-schema validation; repair, independent model evaluation, and full desktop build validation remain. See [PROGRESS.md](../PROGRESS.md).
 
 - Code-OSS source snapshot imported and Microsoft VS Code retained as `upstream` remote.
 - TerraMind product identity and internal contribution are present.

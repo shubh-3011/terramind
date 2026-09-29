@@ -254,6 +254,20 @@ def test_generate_rejects_url_credentials_that_could_escape_loopback(monkeypatch
     assert response.status_code == 503
 
 
+def test_generate_can_use_an_explicit_local_transformers_model(monkeypatch):
+    monkeypatch.setenv("TERRAMIND_HF_MODEL_PATH", "C:/local/terramind-merged-model")
+    with patch("app.main._generate_with_transformers", return_value=(
+        "transformers:terramind-merged-model", 'terraform { required_version = ">= 1.5" }',
+    )) as generate:
+        response = client.post("/v1/generate", json={"description": "Create a private S3 bucket"})
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "transformers:terramind-merged-model"
+    assert response.json()["syntax_valid"] is True
+    generate.assert_called_once()
+    assert generate.call_args.args[0] == "C:/local/terramind-merged-model"
+
+
 def test_external_checks_are_explicitly_opt_in(tmp_path):
     (tmp_path / "main.tf").write_text('terraform { required_version = ">= 1.5" }', encoding="utf-8")
 

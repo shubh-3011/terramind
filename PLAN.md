@@ -1,6 +1,6 @@
 # TerraMind implementation blueprint
 
-> **Live status (2026-09-29):** TerraMind is a private Code-OSS fork with bundled Analyze/Generate commands, opt-in Terraform/TFLint/Checkov analysis, review-before-save local Ollama generation, static AWS/HCL findings, evidence-backed/unknown service ratings, an experimental risk baseline trained on 46 generated AWS cases, and a reproducible license-filtered generation-corpus pipeline. API/data suite: 22 passing; extension compile: 0 TypeScript errors; one live local Ollama call returned parser-accepted HCL. The local corpus prepared 43,561 train and 2,229 validation rows. Generative fine-tuning and provider validation are not done. PR #6 was pushed to `testing`, but GitHub currently reports failing and queued checks; do not merge until resolved. See [PROGRESS.md](PROGRESS.md), [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md), and [docs/GENERATIVE_TRAINING.md](docs/GENERATIVE_TRAINING.md).
+> **Live status (2026-09-29):** TerraMind is a private Code-OSS fork with bundled Analyze/Generate commands, opt-in Terraform/TFLint/Checkov analysis, local Ollama or opt-in Transformers generation, static AWS/HCL findings, evidence-backed/unknown service ratings, an experimental 46-case AWS risk baseline, and a license-filtered 43,561/2,229-row generation corpus. A LoRA training pipeline and short CUDA runs for Apache-2.0 Qwen3-0.6B and Qwen3-1.7B are verified. They do not yet generate reliably: the 0.6B sample failed AWS provider validation and the 1.7B smoke output failed HCL parsing. API/data/training-script suite: 26 passing; extension compile: 0 TypeScript errors. PR #6 remains failing/queued on GitHub; do not merge until required checks pass. See [PROGRESS.md](PROGRESS.md), [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md), and [docs/GENERATIVE_TRAINING.md](docs/GENERATIVE_TRAINING.md).
 
 ## 1. Refined problem statement
 
@@ -97,7 +97,7 @@ The required model predicts binary risk/failure probability. Compare logistic re
 
 ## 7. Milestones
 
-**Current estimate:** roughly 60–65% of agreed MVP scope by milestone coverage (not a schedule or quality estimate). Local inference and the user-reviewed generation flow are exercised, but the model is not fine-tuned, HCL has not been provider-validated, ML remains exploratory, GitHub checks are failing/queued, and the full desktop build and launch are unverified. The [progress log](PROGRESS.md) has the evidence and remaining work for each milestone.
+**Current estimate:** roughly 65% of agreed MVP scope by milestone coverage (not a schedule or quality estimate). The local training and Transformers inference path now run, but the smoke adapters are not usable-quality models, HCL/provider validation fails on test generations, GitHub checks are failing/queued, and the full desktop build and launch are unverified. The [progress log](PROGRESS.md) has evidence and remaining work for each milestone.
 
 | Milestone | Deliverable | Exit criteria |
 | --- | --- | --- |
@@ -106,7 +106,7 @@ The required model predicts binary risk/failure probability. Compare logistic re
 | M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS risk dataset builds reproducibly; separate pinned, license-aware AWS generation corpus pipeline prepared 43,561 train / 2,229 validation rows locally. |
 | M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Experimental logistic baseline, grouped OOF metrics, pair-group bootstrap intervals, reproducible training workflow, and portable model artifact; no external validation or calibration. |
 | M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze and Generate commands, Problems diagnostics, prompt capture, preview, and explicit in-workspace save implemented; UX/runtime integration tests remain. |
-| M5 - Local AI workflow | Ollama adapter, grounded generation/explanation/patch proposal | Local inference exercised with HCL parse gate and explicit preview/save; fine-tune, provider validation, explanations, repairs, and re-test feedback loop remain. |
+| M5 - Local AI workflow | Ollama/Transformers adapter, grounded generation/explanation/patch proposal | Base and merged local model inference paths exercised; short BF16 LoRA training runs completed. Smoke generations fail parser/provider tests; quality improvement, independent evaluation, explanations, repairs, and re-test feedback loop remain. |
 | M6 - Demo hardening | Demo fixtures, tests, screenshots/video, presentation | Repeatable 5-7 minute demo from a clean setup. |
 
 ## 8. Testing strategy

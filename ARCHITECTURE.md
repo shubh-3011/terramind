@@ -7,15 +7,15 @@ TerraMind is a Code-OSS fork. Its Terraform-specific commands and panels are bui
 | Component | Responsibility | Must not do |
 | --- | --- | --- |
 | TerraMind workbench | Collect user intent, invoke API, display diagnostics/report/diff, request user confirmation | Run `apply`, decide risk, or trust LLM output without report evidence |
-| Analyzer API | Validate requests, parse bounded workspaces, optionally call static tools, invoke the experimental model and local Ollama adapter | Persist credentials or write generated source |
+| Analyzer API | Validate requests, parse bounded workspaces, optionally call static tools, invoke the experimental model and local Ollama or explicit local Transformers generation backend | Persist credentials or write generated source |
 | Tool adapters | Run opt-in `terraform fmt`, pre-initialized `terraform validate`, TFLint and Checkov with timeouts, JSON capture, isolated user-home, and cloud credential scrubbing | Run `init`, `plan`, or `apply`; interpret LLM prose as tool output |
 | Feature extractor | Parse Terraform/static reports into versioned numeric/categorical features | Label data from a test split |
 | ML service/module | Load versioned trained model; return class, probability, calibration/version metadata | Replace deterministic findings |
-| Ollama adapter | Generate code/explanation/diff from bounded prompt context and analysis report | Apply files or certify correctness |
+| Local generation adapter | Generate Terraform drafts from bounded prompts using Ollama by default or an offline-only merged Transformers model when `TERRAMIND_HF_MODEL_PATH` is configured | Apply files or certify correctness |
 
 ## TerraMind workbench user interface
 
-The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Analyze Workspace publishes returned findings into Problems. Generate Infrastructure collects requirements, previews HCL from local Ollama, and writes only after explicit user save/overwrite approval; ratings and repair remain planned:
+The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Analyze Workspace publishes returned findings into Problems. Generate Infrastructure collects requirements, previews HCL from local Ollama or the configured local Transformers model, and writes only after explicit user save/overwrite approval. Per-service summaries currently score only observed static security evidence; cost, reliability, scalability, and maintainability are explicit unknowns. Repair remains planned:
 
 | Surface | Purpose |
 | --- | --- |

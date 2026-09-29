@@ -12,6 +12,8 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+import threading
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,6 +25,7 @@ from terramind_ml.features import expand_dynamic_ingress, extract_features
 from terramind_ml.predictor import predict_risk
 
 app = FastAPI(title="TerraMind Analyzer", version="0.1.0")
+_TRANSFORMERS_GENERATION_LOCK = threading.Lock()
 
 MAX_TERRAFORM_FILES = 500
 MAX_FILE_BYTES = 1_000_000
@@ -179,8 +182,21 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
 
 @app.post("/v1/generate", response_model=GenerateResponse)
 def generate_terraform(request: GenerateRequest) -> GenerateResponse:
-    """Generate an HCL draft with a local Ollama model; never writes files."""
+    """Generate an HCL draft with local Ollama or an explicitly configured local HF model."""
     model = request.model or os.environ.get("TERRAMIND_OLLAMA_MODEL", "qwen2.5-coder:3b")
+    prompt = (
+        "You are TerraMind, a Terraform HCL drafting assistant. Generate one complete Terraform configuration. "
+        "Return only HCL, without Markdown fences or prose. Include required_providers and provider configuration "
+        "when needed, use variables for environment-specific values, prefer secure defaults, and do not include "
+        "credentials or run/deploy instructions. Make assumptions explicit as HCL comments.\n\n"
+        f"Infrastructure requested:\n{request.description}\n\n"
+        f"Constraints and connectivity:\n{request.constraints or 'No extra constraints supplied.'}\n"
+    )
+    hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
+    if hf_model_path:
+        response_model, terraform = _generate_with_transformers(hf_model_path, prompt)
+        return _validated_generation_response(response_model, terraform)
+
     ollama_url = os.environ.get("TERRAMIND_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     try:
         ollama_endpoint = urllib.parse.urlsplit(ollama_url)
@@ -198,14 +214,6 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     ):
         raise HTTPException(status_code=503, detail="TerraMind only supports a loopback Ollama endpoint")
 
-    prompt = (
-        "You are TerraMind, a Terraform HCL drafting assistant. Generate one complete Terraform configuration. "
-        "Return only HCL, without Markdown fences or prose. Include required_providers and provider configuration "
-        "when needed, use variables for environment-specific values, prefer secure defaults, and do not include "
-        "credentials or run/deploy instructions. Make assumptions explicit as HCL comments.\n\n"
-        f"Infrastructure requested:\n{request.description}\n\n"
-        f"Constraints and connectivity:\n{request.constraints or 'No extra constraints supplied.'}\n"
-    )
     payload = json.dumps({
         "model": model,
         "prompt": prompt,
@@ -234,6 +242,61 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     terraform = result.get("response") if isinstance(result, dict) else None
     if not isinstance(terraform, str) or not terraform.strip():
         raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
+    return _validated_generation_response(str(result.get("model", model)), terraform)
+
+
+@lru_cache(maxsize=1)
+def _load_transformers_model(model_path: str):
+    """Load a local model once; Hugging Face is forced into offline/local-only mode."""
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("The configured local Transformers model requires CUDA")
+    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, trust_remote_code=False)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path, dtype=dtype, local_files_only=True, trust_remote_code=False,
+    ).to("cuda")
+    model.eval()
+    return tokenizer, model, torch
+
+
+def _generate_with_transformers(model_path: str, prompt: str) -> tuple[str, str]:
+    resolved_path = str(Path(model_path).expanduser().resolve())
+    if not Path(resolved_path).is_dir():
+        raise HTTPException(status_code=503, detail="Configured local Transformers model directory does not exist")
+    try:
+        tokenizer, model, torch = _load_transformers_model(resolved_path)
+    except Exception as error:
+        raise HTTPException(status_code=503, detail=f"Local Transformers model could not be loaded: {error}") from error
+    messages = [
+        {"role": "system", "content": "Return only Terraform HCL. Do not include analysis or Markdown."},
+        {"role": "user", "content": prompt},
+    ]
+    try:
+        encoded = tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True, enable_thinking=False,
+            return_tensors="pt", return_dict=True,
+        )
+    except TypeError:
+        encoded = tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True, return_tensors="pt", return_dict=True,
+        )
+    encoded = {name: tensor.to("cuda") for name, tensor in encoded.items()}
+    try:
+        with _TRANSFORMERS_GENERATION_LOCK, torch.inference_mode():
+            output_ids = model.generate(**encoded, max_new_tokens=2048, do_sample=False)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="Local Transformers model failed during generation") from error
+    generated_ids = output_ids[0, encoded["input_ids"].shape[1]:]
+    generated = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+    return f"transformers:{Path(resolved_path).name}", generated
+
+
+def _validated_generation_response(model: str, terraform: str) -> GenerateResponse:
+    if not isinstance(terraform, str) or not terraform.strip():
+        raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
     terraform = _strip_hcl_fence(terraform.strip())
     if len(terraform.encode("utf-8")) > 1_000_000:
         raise HTTPException(status_code=502, detail="Generated Terraform exceeds the 1 MB preview limit")
@@ -247,7 +310,7 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
 
     return GenerateResponse(
         status="completed",
-        model=str(result.get("model", model)),
+        model=model,
         terraform=terraform,
         syntax_valid=True,
         validation_scope="HCL syntax parsing only; provider schemas, references, scanners, costs, and deployment behavior are not verified.",
