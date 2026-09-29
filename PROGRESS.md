@@ -31,6 +31,7 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The Generate command reports the check status and line-specific validation findings before the save prompt. Saving still requires explicit in-workspace confirmation.
 - Verified with Terraform 1.16.4 and the locally initialized HashiCorp AWS provider 6.66.0: an intentionally incompatible generated draft produced three schema errors on exact lines. No network initialization or cloud call was made.
 - Added validator/API opt-in tests, including default-off behavior, missing-cache behavior, credential scrubbing, and scratch-directory cleanup. Analyzer suite: 34 passing. A fresh extension compile could not run in this checkout: `extensions/terramind-core/node_modules/vscode/bin/compile` and `build/gulpfile.extensions.mjs` are absent. An earlier checkout/session reported successful extension compilation; this turn does not independently reconfirm it.
+- Pushed commit `8aa8b253` to `testing`; PR #6 updated. Hosted ML validation run #21 and Windows/Linux packaging run #19 both failed before jobs started with GitHub's recent-payments/spending-limit annotation. The PR's Code OSS workflow has the same account-block annotation on attempted jobs and additional jobs queued. These are not source-level failures; no hosted artifact was produced. The PR remains open and `main` remains unchanged.
 
 ### 2026-09-29 - Analyze generated Terraform before preview
 
