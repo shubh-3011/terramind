@@ -1,12 +1,12 @@
 # Dataset and ML protocol
 
-> **Status:** the first reproducible pipeline and experimental risk baseline are implemented in [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md): 46 generated AWS cases, 23 paired controls, and grouped out-of-fold metrics. This is a prototype only—not a validated production model. The larger corpus, independently reviewed labels, external validation, calibration, and richer evaluation below remain future work.
+> **Status (2026-09-29):** the first reproducible pipeline and experimental risk baseline are implemented in [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md): 46 generated AWS cases, 23 paired controls, and grouped out-of-fold metrics. This is a prototype only—not a validated production model. The larger corpus, independently reviewed labels, external validation, calibration, and richer evaluation below remain future work.
 
 ## Research question
 
-Can static structural and analyzer-derived features from AWS Terraform configurations estimate the probability that a configuration is risky or will fail a controlled validation/plan workflow, beyond a simple baseline?
+Can static structural features from AWS Terraform configurations distinguish examples labeled as violations of a named benchmark control, beyond a simple baseline?
 
-This is a risk-estimation study, not a claim that the model predicts real-world outages or replaces security scanners.
+The current experiment predicts a narrow synthetic benchmark label. It does not estimate real-world deployment failure, cost, uptime, scalability, or replace security scanners.
 
 ## Dataset acquisition
 
@@ -14,7 +14,7 @@ This is a risk-estimation study, not a claim that the model predicts real-world 
 2. Accept only public sources whose license permits the intended academic use; retain attribution.
 3. Pin each source revision; never train directly from a moving branch.
 4. Deduplicate near-identical modules/configurations using normalized content hashes.
-5. Store raw sources outside Git or with Git LFS only after explicit approval; commit manifests, scripts, schemas, and small fixtures.
+5. Keep raw benchmark Terraform outside Git. This repository currently tracks the pinned source manifest, derived numeric feature CSV, training script, portable JSON model, and metrics report; it does not contain the benchmark's raw Terraform files.
 
 ## Sample schema
 
@@ -88,4 +88,4 @@ reports/evaluation-<run-id>.md
 reports/evaluation-<run-id>.json
 ```
 
-Large raw data and trained artifacts remain out of Git by default; commit the manifests/configuration that can recreate them.
+For the current prototype, raw HCL remains out of Git, while the small derived feature CSV and portable JSON model are committed to this private repository for reproducibility. Reassess licensing, size, privacy, and model-artifact handling before adding broader corpora or larger binary models.

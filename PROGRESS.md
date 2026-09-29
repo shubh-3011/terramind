@@ -6,7 +6,19 @@ This file records real work, decisions, tests, and blockers and is included in t
 
 **Current phase:** M1/M3 - Expanded static analyzer and experimental ML baseline (tool integrations and model validation remain)
 
-**Next build targets:** add workspace-root authorization and more fixture coverage; then integrate Terraform/TFLint/Checkov safely. Separately unblock the Code-OSS native build and launch.
+**Next build targets:** verify fresh GitHub Actions runs after the runner-script and CodeQL fixes; resolve only actionable code/config failures. GitHub billing and Microsoft-only self-hosted runner availability need repository-owner/platform action. Then verify the branded Code-OSS build/launch and add workspace-root authorization plus Terraform/TFLint/Checkov safely.
+
+**Overall estimate:** roughly 35–40% of the agreed MVP scope is implemented, based on the milestones below—not a schedule forecast. The analyzer/model foundation exists, while Terraform tool integrations, complete workbench UX, generation/repair, and desktop packaging/build verification remain major unfinished work.
+
+| Milestone | Status | Evidence / remaining work |
+| --- | --- | --- |
+| M0 - Fork foundation | Partial | TerraMind identity and bundled contribution exist; full Code-OSS build/launch and packaging are unverified. |
+| M1 - Deterministic analyzer | Partial | HCL parsing, AWS heuristic rules, API tests, and Problems diagnostics; Terraform validate/TFLint/Checkov and workspace authorization remain. |
+| M2 - Dataset pipeline | Partial | Reproducible, pinned 46-row AWS derived dataset; broader independently sourced/human-reviewed corpus remains. |
+| M3 - ML baseline | Partial | Grouped OOF logistic baseline and portable inference; uncalibrated, tiny sample, no external holdout. |
+| M4 - Native workbench UX | Partial | Analyze command and initial activity-bar/Problems integration; full analysis panel, ratings, and generation dialog remain. |
+| M5 - Local AI workflow | Not started | Ollama generation, grounded explanations, repair diff/preview, and approval flow are absent. |
+| M6 - Demo hardening | Partial | API fixtures/tests and reproducible model evaluation exist; clean desktop demo, screenshots, and packaging remain. |
 
 ## Log
 
@@ -199,3 +211,21 @@ This file records real work, decisions, tests, and blockers and is included in t
 
 - `node build/azure-pipelines/common/computeNodeModulesCacheKey.ts compile x64` succeeds with the new extension lockfile.
 - PR checks must be rerun by GitHub after these changes reach the base branch; CI resolution is not claimed until those runs complete.
+
+### 2026-09-29 - Synchronize Dependabot PRs and refresh project docs
+
+**Implemented**
+
+- Updated all five open Dependabot PR branches with the current `main` commit (`188e18bf`) so GitHub receives fresh synchronize events and can rerun checks against the CI fixes.
+- Refreshed every TerraMind-owned project Markdown document (`README.md`, `PLAN.md`, `ARCHITECTURE.md`, and `docs/*.md`) to describe the same current feature set, training scope, build limitations, data-tracking policy, and CI state. Upstream VS Code documentation and test-fixture Markdown were not rewritten as project progress documents.
+- Corrected stale data-policy text: raw benchmark Terraform stays outside the repo; the small derived numeric CSV, provenance manifest, exported JSON model, and metrics are intentionally tracked in the private repository.
+
+**Current build status and remaining check**
+
+- Local verified checks remain: 11 analyzer/ML tests pass; the bundled TerraMind extension compiles with 0 TypeScript errors; the npm workspace cache-key script succeeds; workflow YAML parses.
+- The CI bootstrap issues found in the earlier GitHub runs were addressed: the TerraMind npm workspace now has a lockfile, Monaco/telemetry can read the private repo, and Dependabot CodeQL uploads are skipped because its token is read-only.
+- GitHub Actions inspection identified two actionable workflow defects: `apt-retry.sh` is tracked as mode `100644` but was invoked as an executable in Linux test and Copilot setup workflows; CodeQL checked `github.actor`, which becomes the account that synchronizes a Dependabot PR rather than the PR author.
+- Updated both workflows to run the helper explicitly with `bash`, and changed CodeQL's skip condition to check the pull-request author's login while keeping push and scheduled scans enabled.
+- Latest Code-OSS run also has external execution blockers: macOS jobs report account billing/spending-limit failure, and Microsoft-specific self-hosted runner jobs remain queued. These are not source-code failures and need GitHub billing/runner configuration; no successful full matrix is claimed.
+- Local validation and a fresh GitHub Actions rerun are pending for these latest workflow edits. This entry will be amended with actual results after push.
+- The complete Code-OSS desktop build/launch is still unverified; earlier local Windows build attempts were blocked by missing Spectre C++ libraries and incomplete Electron/native dependencies.

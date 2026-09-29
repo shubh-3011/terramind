@@ -18,7 +18,7 @@ jobs:
   analyze:
     # Dependabot PR tokens are read-only and cannot upload SARIF to CodeQL.
     # Dependency-only updates are still checked by the other PR workflows.
-    if: github.actor != 'dependabot[bot]'
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:

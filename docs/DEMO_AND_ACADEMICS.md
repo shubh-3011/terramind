@@ -4,12 +4,12 @@
 
 1. Start the FastAPI service on loopback and open a small Terraform workspace in a TerraMind development window (once the Code-OSS app build is unblocked).
 2. Run **TerraMind: Analyze Workspace**.
-3. Show HCL parse diagnostics and the current `TM-NET-001` public SSH / `TM-IAM-001` wildcard IAM rules in Problems.
+3. Show HCL parse diagnostics and the current network, IAM, S3, ECR, EC2, and EBS static rules in Problems, including dynamic ingress resolution/review behavior.
 4. Show the experimental, uncalibrated model estimate and its training-set limits; distinguish it from deterministic findings.
 5. Point out the response's explicit `not_run` / `not_available` statuses for Terraform validation and scanners.
 6. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
 
-Until the fork launches, run the API tests and call the API directly against a fixture to demonstrate the backend slice.
+Until the fork launches, run the 11 API/ML tests and call the API directly against an intentionally vulnerable benchmark fixture to demonstrate the backend slice. The extension compiles separately, but this does not establish a successful full Code-OSS build.
 
 ## Planned final demo (5-7 minutes)
 
