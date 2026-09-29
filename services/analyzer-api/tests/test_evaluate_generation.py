@@ -28,6 +28,7 @@ def test_evaluation_reports_aggregate_metrics_without_storing_code(tmp_path):
         return 200, {
             "model": "local-test-model",
             "terraform": f'resource "{resource_type}" "generated" {{}}',
+            "checks": {"generation_repair": "not_needed"},
         }, 0.5, None
 
     report = evaluate_generation(validation, "http://127.0.0.1:8000", request_fn=request)
@@ -36,6 +37,8 @@ def test_evaluation_reports_aggregate_metrics_without_storing_code(tmp_path):
     assert report["parseable_hcl_rate"] == 1
     assert report["resource_type_micro_f1"] == 1
     assert report["backend_models"] == {"local-test-model": 2}
+    assert report["generation_repair_status_counts"] == {"not_needed": 2}
+    assert report["repaired_parseable_hcl_count"] == 0
     assert len(report["example_ids_sha256_prefixes"]) == 2
     serialized_report = json.dumps(report)
     assert "Create compute" not in serialized_report
@@ -98,7 +101,7 @@ def test_evaluation_reports_provider_schema_acceptance_without_paths_or_code(tmp
         return 200, {
             "model": "local-test-model",
             "terraform": 'resource "aws_s3_bucket" "generated" {}',
-            "checks": {"terraform_validate": "passed"},
+            "checks": {"terraform_validate": "passed", "generation_repair": "attempted once; review the returned validation findings"},
         }, 0.25, None
 
     report = evaluate_generation(
@@ -108,6 +111,7 @@ def test_evaluation_reports_provider_schema_acceptance_without_paths_or_code(tmp
 
     assert report["provider_validation_status_counts"] == {"passed": 1}
     assert report["provider_schema_valid_count"] == 1
+    assert report["repaired_parseable_hcl_count"] == 1
     assert calls[0][1] == str(workspace.resolve())
     assert str(workspace) not in json.dumps(report)
     assert "resource \"aws_s3_bucket\"" not in json.dumps(report)

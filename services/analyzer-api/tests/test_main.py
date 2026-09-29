@@ -291,7 +291,7 @@ def test_generate_can_opt_into_cached_provider_validation(tmp_path):
     generated = response.json()
     assert generated["checks"]["terraform_validate"] == "failed: 1 error(s), 0 warning(s)"
     assert any(finding["rule_id"] == "TF-VALIDATE" for finding in generated["findings"])
-    validate.assert_called_once()
+    assert validate.call_count == 2
     assert validate.call_args.args[1] == str(tmp_path)
 
 
@@ -326,6 +326,64 @@ def test_generate_skips_provider_plugins_for_untrusted_workspace(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["checks"]["terraform_validate"] == "not_run: workspace is untrusted (Restricted Mode)"
+
+
+def test_generate_retries_once_with_hcl_parser_feedback():
+    with patch(
+        "app.main._generate_with_ollama",
+        side_effect=[
+            ("test-model", "resource { invalid"),
+            ("test-model", 'resource "aws_s3_bucket" "example" {}'),
+        ],
+    ) as generate:
+        response = client.post("/v1/generate", json={
+            "description": "Create a private S3 bucket",
+        })
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["syntax_valid"] is True
+    assert result["checks"]["generation_repair"] == "attempted once; review the returned validation findings"
+    assert generate.call_count == 2
+    repair_prompt = generate.call_args_list[1].args[2]
+    assert "<validation_feedback>" in repair_prompt
+    assert "not parseable HCL" in repair_prompt
+
+
+def test_generate_repairs_provider_errors_and_revalidates():
+    from app.main import Finding
+
+    invalid_draft = 'resource "aws_s3_bucket" "example" { invalid_argument = true }'
+    corrected_draft = 'resource "aws_s3_bucket" "example" {}'
+    provider_finding = Finding(
+        id="main.tf:TF-VALIDATE:1:0", source="terraform-cli", rule_id="TF-VALIDATE",
+        severity="error", message="Unsupported argument: invalid_argument", file="main.tf", line=1,
+    )
+
+    with patch(
+        "app.main._generate_with_ollama",
+        side_effect=[("test-model", invalid_draft), ("test-model", corrected_draft)],
+    ) as generate, patch(
+        "app.generated_validator.run_generated_terraform_validation",
+        side_effect=[
+            ("failed: 1 error(s), 0 warning(s)", [provider_finding]),
+            ("passed", []),
+        ],
+    ) as validate:
+        response = client.post("/v1/generate", json={
+            "description": "Create a private S3 bucket",
+            "workspace_path": "C:/trusted/workspace",
+            "run_external_tools": True,
+            "workspace_trusted": True,
+        })
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["checks"]["terraform_validate"] == "passed"
+    assert result["checks"]["generation_repair"] == "attempted once; review the returned validation findings"
+    assert validate.call_count == 2
+    repair_prompt = generate.call_args_list[1].args[2]
+    assert "Unsupported argument: invalid_argument" in repair_prompt
 
 
 def test_generate_rejects_unparseable_model_output():

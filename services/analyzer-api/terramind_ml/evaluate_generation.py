@@ -129,6 +129,8 @@ def evaluate_generation(
     expected_resources = 0
     matching_resources = 0
     provider_checks: Counter[str] = Counter()
+    repair_statuses: Counter[str] = Counter()
+    repaired_parseable = 0
 
     for row in sampled:
         messages = row.get("messages")
@@ -155,6 +157,9 @@ def evaluate_generation(
             model_names[model] += 1
         checks = body.get("checks")
         if isinstance(checks, dict):
+            repair_status = checks.get("generation_repair")
+            if isinstance(repair_status, str):
+                repair_statuses[repair_status.split(":", maxsplit=1)[0]] += 1
             provider_status = checks.get("terraform_validate")
             if isinstance(provider_status, str):
                 provider_checks[provider_status.split(":", maxsplit=1)[0]] += 1
@@ -169,6 +174,8 @@ def evaluate_generation(
             continue
 
         parseable += 1
+        if isinstance(checks, dict) and str(checks.get("generation_repair", "")).startswith("attempted"):
+            repaired_parseable += 1
         predicted_resources += actual.total()
         expected_resources += expected.total()
         matching_resources += sum((actual & expected).values())
@@ -182,7 +189,7 @@ def evaluate_generation(
     manifest_path = validation_path.parent / "manifest.json"
     manifest_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest() if manifest_path.is_file() else None
     return {
-        "evaluation": "local-terraform-generation-v1",
+        "evaluation": "local-terraform-generation-v2",
         "validation_file_sha256": hashlib.sha256(validation_path.read_bytes()).hexdigest(),
         "source_manifest_sha256": manifest_hash,
         "seed": seed,
@@ -202,6 +209,8 @@ def evaluate_generation(
         },
         "provider_validation_status_counts": dict(provider_checks),
         "provider_schema_valid_count": provider_checks["passed"],
+        "generation_repair_status_counts": dict(repair_statuses),
+        "repaired_parseable_hcl_count": repaired_parseable,
         "mean_generation_seconds": statistics.mean(latencies) if latencies else None,
         "backend_models": dict(model_names),
         "errors_by_kind": dict(errors),
@@ -243,6 +252,7 @@ def main() -> int:
             "evaluated_examples", "parseable_hcl_count", "parseable_hcl_rate",
             "resource_type_micro_f1", "errors_by_kind", "backend_models",
             "provider_validation_status_counts", "provider_schema_valid_count",
+            "generation_repair_status_counts", "repaired_parseable_hcl_count",
         )
     }, indent=2))
     return 0

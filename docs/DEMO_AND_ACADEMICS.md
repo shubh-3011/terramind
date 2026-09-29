@@ -10,7 +10,7 @@
 6. Explain that provider validation may execute installed plugins and is opt-in; no `init`, `plan`, or `apply` is run.
 7. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
 
-The API/ML/data/training/evaluation suite has 38 passing tests, including mocked pre-save provider validation, Restricted Mode suppression, optional provider-schema evaluation metrics, and checks that ensure local provider plugins receive no cloud/`TF_VAR` credentials. A real local AWS-provider run on an isolated generated draft reported three schema errors without running `terraform init`. A 3-example local 0.6B held-out evaluation parsed 1 response and rejected 2 as invalid HCL; this tiny sample does not establish quality. The extension TypeScript project typecheck passes; full extension packaging and the full fork launch remain unverified.
+The API/ML/data/training/evaluation suite has 40 passing tests, including mocked pre-save provider validation, Restricted Mode suppression, one-retry parser/provider feedback, optional provider-schema evaluation metrics, and checks that ensure local provider plugins receive no cloud/`TF_VAR` credentials. A real local AWS-provider run on an isolated generated draft reported three schema errors without running `terraform init`. The historical 3-example local 0.6B held-out evaluation ran before the retry feature, parsed 1 response and rejected 2 as invalid HCL; this tiny sample does not establish quality. The extension TypeScript project typecheck passes; full extension packaging and the full fork launch remain unverified.
 
 ## Planned final demo (5-7 minutes)
 

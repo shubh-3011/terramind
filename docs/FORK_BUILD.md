@@ -37,13 +37,13 @@ It is acceptable to implement part of the product feature as a **bundled interna
 
 ## Current implementation status (2026-09-29)
 
-The current MVP is estimated at roughly 65% complete by milestone coverage. Local inference, scanner adapters, evidence ratings, corpus preparation, a short LoRA smoke training path, and optional Transformers-backed inference are implemented. Current smoke generations fail HCL or AWS provider-schema validation; repair, independent model evaluation, and full desktop build validation remain. See [PROGRESS.md](../PROGRESS.md).
+The current MVP is estimated at roughly 65% complete by milestone coverage. Local inference, scanner adapters, evidence ratings, corpus preparation, a short LoRA smoke training path, optional Transformers-backed inference, and a one-retry parser/provider feedback loop are implemented. Historical smoke generations fail HCL or AWS provider-schema validation; no post-retry benchmark has been run. Reviewable repair diffs, independent model evaluation, and full desktop build validation remain. See [PROGRESS.md](../PROGRESS.md).
 
 - Code-OSS source snapshot imported and Microsoft VS Code retained as `upstream` remote.
 - TerraMind product identity and internal contribution are present.
 - Analyzer API and built-in Analyze/Generate commands are present: HCL parse, AWS static rules (including in-memory checks on generated drafts), opt-in preinitialized-cache Terraform validation/TFLint/Checkov integration, ML risk estimate, Problems diagnostics, local Ollama/optional Transformers draft preview and explicit save.
 - A compact, grouped-evaluation experimental logistic model is available; it is not a general Terraform code-generation model or production predictor.
-- Analyzer/ML/data/training/evaluation tests pass (38); the extension TypeScript project typecheck passes. Full Code-OSS extension packaging cannot run in this checkout because its Gulp file is absent.
+- Analyzer/ML/data/training/evaluation tests pass (40); the extension TypeScript project typecheck passes. Full Code-OSS extension packaging cannot run in this checkout because its Gulp file is absent.
 - Full Code-OSS install/build/launch is **not verified**; Windows native build prerequisites and GitHub's upstream-specific self-hosted runners remain outstanding. See the latest build/CI entry in [PROGRESS.md](../PROGRESS.md).
 - A testing-branch workflow targets downloadable Windows x64 ZIP and Linux x64 TAR.GZ preview builds. A `terramind-v*` tag can create a draft private release only after both builds succeed; current hosted jobs are not yet verified. These alpha packages still require the analyzer API and Ollama to be started manually and are not end-user-ready.
 
