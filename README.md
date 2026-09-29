@@ -10,7 +10,7 @@ This is an early prototype, not a finished editor or production security product
 
 - Implemented: TerraMind product identity, bundled activity-bar contribution, Analyze Workspace command, local FastAPI API, HCL syntax parsing, initial SSH/IAM/S3/ECR/EC2/EBS static rules, VS Code Problems diagnostics, and an experimental grouped-evaluation logistic-regression risk estimate.
 - Not implemented: Terraform provider validation, TFLint, Checkov, cost/availability/scalability ratings, prompt-to-Terraform generation, Ollama integration, or repair proposals. The model is trained on only 46 controlled AWS cases and is not suitable for production decisions.
-- Validation status: analyzer/ML suite passes 11 tests; the TerraMind extension compiles with 0 TypeScript errors; the npm workspace cache-key check passes. A complete Code-OSS app build and launch are not verified. GitHub Actions fixes have been pushed, but their new PR runs still need verification.
+- Validation status: analyzer/ML suite passes 11 tests; the TerraMind extension compiles with 0 TypeScript errors; the npm workspace cache-key check passes. A complete Code-OSS app build and launch are not verified. GitHub Actions fixes are pushed; the fresh Linux rerun is currently waiting for a hosted runner, so remote CI is not yet confirmed green.
 
 See [PLAN.md](PLAN.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [PROGRESS.md](PROGRESS.md) for the roadmap, design contracts, and verified progress.
 
