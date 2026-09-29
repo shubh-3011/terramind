@@ -14,6 +14,8 @@ This is an early prototype, not a finished editor or production security product
 
 See [PLAN.md](PLAN.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [PROGRESS.md](PROGRESS.md) for the roadmap, design contracts, and verified progress.
 
+Current local validation after adding the single-file repair-proposal workflow is 43 analyzer/data/training/evaluation tests plus a clean TerraMind extension TypeScript check. The proposal diff is explicit and local; multi-file repair, semantic correctness, repair-quality evaluation, and successful hosted desktop packaging remain unverified.
+
 ## Analyzer service (development)
 
 Use Python 3.11–3.13. From `services/analyzer-api`:

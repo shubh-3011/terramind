@@ -15,6 +15,7 @@
 	"activationEvents": [
 		"onCommand:terramind.analyzeWorkspace",
 		"onCommand:terramind.generateInfrastructure",
+		"onCommand:terramind.proposeRepair",
 		"onCommand:terramind.openDashboard"
 	],
 	"main": "./out/extension",
@@ -38,11 +39,25 @@
 				"category": "TerraMind"
 			},
 			{
+				"command": "terramind.proposeRepair",
+				"title": "%command.proposeRepair%",
+				"category": "TerraMind"
+			},
+			{
 				"command": "terramind.openDashboard",
 				"title": "%command.openDashboard%",
 				"category": "TerraMind"
 			}
 		],
+		"menus": {
+			"editor/title": [
+				{
+					"command": "terramind.proposeRepair",
+					"when": "editorLangId == terraform",
+					"group": "navigation"
+				}
+			]
+		},
 		"viewsContainers": {
 			"activitybar": [
 				{

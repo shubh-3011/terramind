@@ -7,10 +7,11 @@
 3. Show HCL parse diagnostics and the current network, IAM, S3, ECR, EC2, and EBS static rules in Problems, including dynamic ingress resolution/review behavior.
 4. Show the experimental, uncalibrated model estimate and its training-set limits; distinguish it from deterministic findings.
 5. Generate an intentionally unsafe Terraform draft; show static findings and limited ratings before preview/save. If the workspace has a local initialized provider cache, opt into external tools and show the pre-save `terraform validate` findings too.
-6. Explain that provider validation may execute installed plugins and is opt-in; no `init`, `plan`, or `apply` is run.
-7. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
+6. Use **Propose Terraform Repair** on a local `.tf` file; inspect the replacement diff and findings, then discard or explicitly apply. Confirm the file is saved and analysis runs again only after approval.
+7. Explain that provider validation may execute installed plugins and is opt-in; no `init`, `plan`, or `apply` is run.
+8. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
 
-The API/ML/data/training/evaluation suite has 41 passing tests, including mocked pre-save provider validation, Restricted Mode suppression, one-retry parser/provider feedback, structured resource/topology prompt assembly, optional provider-schema evaluation metrics, and checks that ensure local provider plugins receive no cloud/`TF_VAR` credentials. The Generate dialog captures requirements, resource/count inventory, connectivity, and additional constraints separately. A real local AWS-provider run on an isolated generated draft reported three schema errors without running `terraform init`. The 3-example local 0.6B held-out evaluation is only pipeline evidence and does not establish quality. The extension TypeScript project typecheck passes; full extension packaging and the full fork launch remain unverified. GitHub package/ML jobs are currently blocked before runner startup by account billing/spending limits.
+The API/ML/data/training/evaluation suite has 43 passing tests, including repair proposal prompt/parse checks, mocked pre-save provider validation, Restricted Mode suppression, one-retry parser/provider feedback, structured resource/topology prompt assembly, optional provider-schema evaluation metrics, and checks that ensure local provider plugins receive no cloud/`TF_VAR` credentials. The Generate dialog captures requirements, resource/count inventory, connectivity, and additional constraints separately. A real local AWS-provider run on an isolated generated draft reported three schema errors without running `terraform init`. The 3-example local 0.6B held-out evaluation is only pipeline evidence and does not establish quality. The extension TypeScript project typecheck passes; full extension packaging and the full fork launch remain unverified. GitHub package/ML jobs are currently blocked before runner startup by account billing/spending limits.
 
 ## Planned final demo (5-7 minutes)
 
@@ -18,7 +19,7 @@ The API/ML/data/training/evaluation suite has 41 passing tests, including mocked
 2. Run **Analyze**: show `fmt`/`validate` and scanner results only when configured and available, plus a separately labeled model risk probability with version.
 3. Open a fixture with an invalid reference and insecure SSH/IAM rule. Re-run analysis and navigate from findings to exact lines.
 4. Generate a Terraform draft using local Ollama, preview it, then explicitly save it and re-run analysis.
-5. Ask for a grounded explanation or repair proposal only after those features are implemented; inspect any diff and re-run all checks.
+5. Use **Propose Terraform Repair** on the active `.tf` file; review the local diff, approve or discard, and confirm analysis reruns only after approval. This proposes a single-file replacement and does not prove semantic correctness.
 6. Show the evaluation report: grouped split policy, baseline comparison, calibration, test metrics, and limitations.
 
 Use offline, checked-in fixtures and recorded tool/model versions. Do not rely on a live cloud account during the presentation.

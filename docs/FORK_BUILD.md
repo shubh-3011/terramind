@@ -37,7 +37,7 @@ It is acceptable to implement part of the product feature as a **bundled interna
 
 ## Current implementation status (2026-09-29)
 
-The current MVP is estimated at roughly 65% complete by milestone coverage. Local inference, scanner adapters, evidence ratings, corpus preparation, a short LoRA smoke training path, optional Transformers-backed inference, separate generation inputs for requirements/inventory/topology/constraints, and a one-retry parser/provider feedback loop are implemented. The post-retry three-example smoke run parsed 2/3 outputs; cached AWS provider validation accepted 0/2 parseable drafts after retry. These are pipeline checks, not a quality benchmark. Reviewable repair diffs, independent model evaluation, successful hosted CI, and full desktop build validation remain. GitHub currently prevents ML/package jobs from starting due to account payment/spending-limit restrictions. See [PROGRESS.md](../PROGRESS.md).
+The current MVP is estimated at roughly 65% complete by milestone coverage. Local inference, scanner adapters, evidence ratings, corpus preparation, a short LoRA smoke training path, optional Transformers-backed inference, separate generation inputs for requirements/inventory/topology/constraints, a one-retry parser/provider feedback loop, and a single-file repair proposal with user-approved diff preview are implemented. The post-retry three-example smoke run parsed 2/3 outputs; cached AWS provider validation accepted 0/2 parseable drafts after retry. These are pipeline checks, not a quality benchmark. Repair semantics, interactive UI tests, useful-scale independent model evaluation, successful hosted CI, and full desktop build validation remain. GitHub currently prevents ML/package jobs from starting due to account payment/spending-limit restrictions. See [PROGRESS.md](../PROGRESS.md).
 
 - Code-OSS source snapshot imported and Microsoft VS Code retained as `upstream` remote.
 - TerraMind product identity and internal contribution are present.
@@ -53,7 +53,7 @@ The current MVP is estimated at roughly 65% complete by milestone coverage. Loca
 2. Add analyzer workspace allowlisting and stable rules/tests for more invalid and insecure configurations.
 3. Install/run the local model; fine-tune and benchmark an adapter only after GPU training dependencies and corpus licensing are verified.
 4. Add reliability/cost/scalability ratings that show their criteria and insufficient-information states.
-5. Finish analysis report UX, repair proposals, and repeated verification of reviewed changes.
+5. Add grounded explanations and multi-file repair support; verify repeated analyzer feedback after approved single-file repairs.
 
 ## Development requirements and maintenance
 

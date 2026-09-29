@@ -3,6 +3,7 @@
 	"description": "Built-in Terraform intelligence for TerraMind.",
 	"command.analyzeWorkspace": "Analyze Terraform Workspace",
 	"command.generateInfrastructure": "Generate Infrastructure",
+	"command.proposeRepair": "Propose Terraform Repair",
 	"command.openDashboard": "Open Dashboard",
 	"viewContainer.title": "TerraMind",
 	"view.dashboard": "Infrastructure Intelligence",

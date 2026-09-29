@@ -299,6 +299,96 @@ export function activate(context: vscode.ExtensionContext): void {
 			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not generate a draft. Confirm the local analyzer and configured model backend are available.'));
 		}
 	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('terramind.proposeRepair', async () => {
+		const editor = vscode.window.activeTextEditor;
+		const workspaceFolder = editor && vscode.workspace.getWorkspaceFolder(editor.document.uri);
+		if (!editor || !workspaceFolder || editor.document.languageId !== 'terraform' || !editor.document.uri.path.toLowerCase().endsWith('.tf')) {
+			await vscode.window.showErrorMessage(vscode.l10n.t('Open a Terraform .tf file in the current workspace before proposing a repair.'));
+			return;
+		}
+		if (editor.document.uri.scheme !== 'file') {
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind repair proposals are available for local workspace files only.'));
+			return;
+		}
+		if (editor.document.isDirty) {
+			const saveChoice = await vscode.window.showInformationMessage(
+				vscode.l10n.t('Save the current Terraform file before preparing a repair proposal?'),
+				{ modal: true }, vscode.l10n.t('Save and Continue'), vscode.l10n.t('Cancel')
+			);
+			if (saveChoice !== vscode.l10n.t('Save and Continue') || !await editor.document.save()) {
+				return;
+			}
+		}
+		const instructions = await vscode.window.showInputBox({
+			prompt: vscode.l10n.t('Optional: describe the change you want. TerraMind will propose a diff and will not edit until you approve it.'),
+			placeHolder: vscode.l10n.t('Example: restrict SSH ingress to the office CIDR'),
+			ignoreFocusOut: true
+		});
+		if (instructions === undefined) {
+			return;
+		}
+
+		const document = editor.document;
+		const originalText = document.getText();
+		const originalVersion = document.version;
+		const findings = vscode.languages.getDiagnostics(document.uri)
+			.filter(diagnostic => diagnostic.source?.startsWith('TerraMind'))
+			.slice(0, 50)
+			.map(diagnostic => `${diagnostic.code ?? 'finding'}: ${diagnostic.message}`);
+		try {
+			const model = vscode.workspace.getConfiguration('terramind').get<string>('generationModel', 'qwen2.5-coder:3b');
+			const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
+			const proposal = await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: vscode.l10n.t('TerraMind: Preparing a Terraform repair proposal'),
+				cancellable: false
+			}, () => requestRepair(
+				originalText, findings, instructions.trim(), model, workspaceFolder.uri.fsPath,
+				runExternalTools, vscode.workspace.isTrusted
+			));
+			const proposalErrors = (proposal.findings ?? []).filter(finding => finding.severity === 'error').length;
+			const proposalWarnings = (proposal.findings ?? []).filter(finding => finding.severity === 'warning').length;
+			output.appendLine(`Repair proposal from ${proposal.model}: errors=${proposalErrors}; warnings=${proposalWarnings}; ${proposal.validation_scope}`);
+			for (const finding of proposal.findings ?? []) {
+				output.appendLine(`${finding.severity.toUpperCase()} ${finding.rule_id} ${finding.file}${finding.line ? `:${finding.line}` : ''}: ${finding.message}`);
+			}
+			output.show(true);
+			const preview = await vscode.workspace.openTextDocument({ language: 'terraform', content: proposal.terraform });
+			await vscode.commands.executeCommand(
+				'vscode.diff', document.uri, preview.uri,
+				vscode.l10n.t('TerraMind Repair Proposal: {0}', vscode.workspace.asRelativePath(document.uri)),
+				{ preview: true }
+			);
+			const choice = await vscode.window.showInformationMessage(
+				vscode.l10n.t('Review the diff. HCL parsing passed; static/CLI checks found {0} error(s) and {1} warning(s). Provider check: {2}. Apply this replacement?', proposalErrors, proposalWarnings, proposal.checks?.terraform_validate ?? vscode.l10n.t('not run')),
+				{ modal: true }, vscode.l10n.t('Apply Repair'), vscode.l10n.t('Discard Proposal')
+			);
+			if (choice !== vscode.l10n.t('Apply Repair')) {
+				return;
+			}
+			if (document.version !== originalVersion || document.getText() !== originalText) {
+				await vscode.window.showErrorMessage(vscode.l10n.t('The Terraform file changed while the repair was being reviewed. The proposal was not applied; run it again.'));
+				return;
+			}
+			const edit = new vscode.WorkspaceEdit();
+			edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(originalText.length)), proposal.terraform);
+			if (!await vscode.workspace.applyEdit(edit)) {
+				throw new Error('VS Code declined the approved workspace edit.');
+			}
+			if (!await document.save()) {
+				await vscode.window.showWarningMessage(vscode.l10n.t('The approved repair remains unsaved. Save the file manually before running workspace analysis.'));
+				return;
+			}
+			output.appendLine(`Applied user-approved repair proposal to ${vscode.workspace.asRelativePath(document.uri)}; re-running workspace analysis.`);
+			output.show(true);
+			await vscode.commands.executeCommand('terramind.analyzeWorkspace');
+		} catch (error) {
+			output.appendLine(`Terraform repair proposal failed: ${getErrorMessage(error)}`);
+			output.show(true);
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not prepare a repair proposal. Confirm the local analyzer and configured model backend are available.'));
+		}
+	}));
 }
 
 async function requestAnalysis(workspacePath: string, runExternalTools: boolean, workspaceTrusted: boolean): Promise<AnalysisResult> {
@@ -333,6 +423,36 @@ async function requestGeneration(
 			resource_inventory: resourceInventory,
 			connectivity,
 			constraints,
+			model,
+			workspace_path: workspacePath,
+			run_external_tools: runExternalTools,
+			workspace_trusted: workspaceTrusted
+		})
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => undefined) as { detail?: string } | undefined;
+		throw new Error(error?.detail ?? `Analyzer returned HTTP ${response.status}`);
+	}
+	return await response.json() as GenerationResult;
+}
+
+async function requestRepair(
+	terraform: string,
+	findings: readonly string[],
+	instructions: string,
+	model: string,
+	workspacePath: string,
+	runExternalTools: boolean,
+	workspaceTrusted: boolean
+): Promise<GenerationResult> {
+	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
+	const response = await fetch(`${analyzerUrl}/v1/repair`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			terraform,
+			findings,
+			instructions,
 			model,
 			workspace_path: workspacePath,
 			run_external_tools: runExternalTools,

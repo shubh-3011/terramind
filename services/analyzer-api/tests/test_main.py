@@ -268,6 +268,38 @@ def test_generate_includes_structured_inventory_and_topology_in_model_prompt():
     assert "Other constraints:\nap-south-1; no public SSH" in prompt
 
 
+def test_repair_returns_validated_proposal_without_writing_workspace(tmp_path):
+    original = 'resource "aws_security_group" "web" { ingress { cidr_blocks = ["0.0.0.0/0"] } }'
+    proposed = 'resource "aws_security_group" "web" { ingress { cidr_blocks = ["192.0.2.0/24"] } }'
+    with patch("app.main._generate_with_ollama", return_value=("test-model", proposed)) as generate:
+        response = client.post("/v1/repair", json={
+            "terraform": original,
+            "findings": ["TM-NET-001: ingress is open to the public"],
+            "instructions": "Restrict to the approved office range",
+            "workspace_path": str(tmp_path),
+        })
+
+    assert response.status_code == 200
+    assert response.json()["terraform"] == proposed
+    assert response.json()["syntax_valid"] is True
+    prompt = generate.call_args.args[2]
+    assert "TM-NET-001: ingress is open to the public" in prompt
+    assert json.dumps(original) in prompt
+    assert "Restrict to the approved office range" in prompt
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_repair_rejects_unparseable_proposal():
+    with patch("app.main._generate_with_ollama", return_value=("test-model", "resource { broken")):
+        response = client.post("/v1/repair", json={
+            "terraform": 'resource "aws_s3_bucket" "data" {}',
+            "findings": ["Fix the missing configuration"],
+        })
+
+    assert response.status_code == 422
+    assert "not parseable HCL" in response.json()["detail"]
+
+
 def test_generate_can_opt_into_cached_provider_validation(tmp_path):
     from app.main import Finding
 

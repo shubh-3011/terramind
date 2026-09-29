@@ -4,6 +4,8 @@
 
 > **Update (2026-09-29):** the generation dialog now separates optional resource/count inventory and topology from requirements and constraints; the API/data/training/evaluation suite is now 41 passing. The account-level Actions billing restriction is confirmed in the authenticated UI. See the newer entry and snapshot in [PROGRESS.md](PROGRESS.md).
 
+> **Update (2026-09-29):** local repair proposals now flow through `/v1/repair` and the native **Propose Terraform Repair** command. Proposals are validated, diff-previewed, user-approved, guarded against concurrent editor changes, and re-analyzed after application. The local suite is 43 passing; interactive UI integration and repair-quality validation remain.
+
 ## 1. Refined problem statement
 
 Terraform authoring tools help with syntax, but generated or hand-written infrastructure can still contain invalid references, unsafe access controls, incompatible provider settings, poor dependency design, and deployment risks. TerraMind is a branded **Code-OSS fork** specialized for AWS Terraform authors. It keeps independent deterministic tooling as the source of truth, adds a trained ML risk estimate for patterns not reducible to one fixed rule, and uses a local LLM for generation, explanation, and repair suggestions.
@@ -107,8 +109,8 @@ The required model predicts binary risk/failure probability. Compare logistic re
 | M1 - Deterministic analyzer | HCL parse diagnostics, bounded workspace scan, report schema, tested rules, then Terraform/TFLint/Checkov adapters | HCL/static and opt-in CLI/scanner adapters implemented and unit-tested; broader rules, workspace allowlisting, and live installed-tool tests remain. |
 | M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS risk dataset builds reproducibly; separate pinned, license-aware AWS generation corpus pipeline prepared 43,561 train / 2,229 validation rows locally. |
 | M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Experimental logistic baseline, grouped OOF metrics, pair-group bootstrap intervals, reproducible training workflow, and portable model artifact; no external validation or calibration. |
-| M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze and Generate commands, Problems diagnostics, prompt capture, preview, and explicit in-workspace save implemented; UX/runtime integration tests remain. |
-| M5 - Local AI workflow | Ollama/Transformers adapter, grounded generation/explanation/patch proposal | Base and merged local model inference paths exercised; short BF16 LoRA training runs completed; generation can retry once from parser/provider feedback. Smoke model quality remains unproven; reviewable repair diffs, independent evaluation at useful scale, explanations, and post-approval re-test loop remain. |
+| M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze, Generate, and Propose Repair commands; Problems diagnostics; separate requirements/resource/topology/constraints inputs; repair diff preview and approval, explicit save, and post-approval workspace re-analysis implemented; interactive UI tests remain. |
+| M5 - Local AI workflow | Ollama/Transformers adapter, grounded generation/explanation/patch proposal | Base and merged local model inference paths exercised; short BF16 LoRA training runs completed; generation can retry once from parser/provider feedback; repair proposal endpoint is wired to a user-approved diff workflow. Smoke model and repair quality remain unproven; independent evaluation at useful scale and grounded explanations remain. |
 | M6 - Demo hardening | Demo fixtures, tests, screenshots/video, presentation | Repeatable 5-7 minute demo from a clean setup. |
 
 ## 8. Testing strategy
