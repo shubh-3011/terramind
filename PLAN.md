@@ -1,6 +1,6 @@
 # TerraMind implementation blueprint
 
-> **Live status (2026-09-29):** TerraMind is a private Code-OSS fork with bundled Analyze and Generate commands, opt-in Terraform/TFLint/Checkov analysis, review-before-save local Ollama generation, static AWS/HCL findings, Problems diagnostics, an experimental risk baseline trained on 46 generated AWS cases, and a reproducible license-attributed generation-corpus preparation pipeline. API/data tests (19) and extension compilation pass. The Ollama model, fine-tuned adapter, full editor build/launch, and current PR package outputs remain unverified; see [PROGRESS.md](PROGRESS.md), [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md), and [docs/GENERATIVE_TRAINING.md](docs/GENERATIVE_TRAINING.md).
+> **Live status (2026-09-29):** TerraMind is a private Code-OSS fork with bundled Analyze/Generate commands, opt-in Terraform/TFLint/Checkov analysis, review-before-save local Ollama generation, static AWS/HCL findings, evidence-backed/unknown service ratings, an experimental risk baseline trained on 46 generated AWS cases, and a reproducible license-filtered generation-corpus pipeline. API/data suite: 22 passing; extension compile: 0 TypeScript errors; one live local Ollama call returned parser-accepted HCL. The local corpus prepared 43,561 train and 2,229 validation rows. Generative fine-tuning and provider validation are not done. PR #6 was pushed to `testing`, but GitHub currently reports failing and queued checks; do not merge until resolved. See [PROGRESS.md](PROGRESS.md), [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md), and [docs/GENERATIVE_TRAINING.md](docs/GENERATIVE_TRAINING.md).
 
 ## 1. Refined problem statement
 
@@ -97,16 +97,16 @@ The required model predicts binary risk/failure probability. Compare logistic re
 
 ## 7. Milestones
 
-**Current estimate:** roughly 55–60% of agreed MVP scope by milestone coverage (not a schedule or quality estimate). The generation workflow is implemented but awaits a live Ollama model test; ML remains exploratory, and the full desktop build and launch are unverified. The [progress log](PROGRESS.md) has the evidence and remaining work for each milestone.
+**Current estimate:** roughly 60–65% of agreed MVP scope by milestone coverage (not a schedule or quality estimate). Local inference and the user-reviewed generation flow are exercised, but the model is not fine-tuned, HCL has not been provider-validated, ML remains exploratory, GitHub checks are failing/queued, and the full desktop build and launch are unverified. The [progress log](PROGRESS.md) has the evidence and remaining work for each milestone.
 
 | Milestone | Deliverable | Exit criteria |
 | --- | --- | --- |
 | M0 - Fork foundation | Clone/pin Code-OSS, TerraMind product branding, build prerequisites, tool preflight | Source snapshot and branding exist; development build still blocked/unverified by Windows native dependencies. |
 | M1 - Deterministic analyzer | HCL parse diagnostics, bounded workspace scan, report schema, tested rules, then Terraform/TFLint/Checkov adapters | HCL/static and opt-in CLI/scanner adapters implemented and unit-tested; broader rules, workspace allowlisting, and live installed-tool tests remain. |
-| M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS risk dataset builds reproducibly; a separate pinned, license-aware 45K-row AWS generation corpus preparation pipeline is implemented but has not yet been run. |
+| M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS risk dataset builds reproducibly; separate pinned, license-aware AWS generation corpus pipeline prepared 43,561 train / 2,229 validation rows locally. |
 | M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Experimental logistic baseline, grouped OOF metrics, pair-group bootstrap intervals, reproducible training workflow, and portable model artifact; no external validation or calibration. |
 | M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze and Generate commands, Problems diagnostics, prompt capture, preview, and explicit in-workspace save implemented; UX/runtime integration tests remain. |
-| M5 - Local AI workflow | Ollama adapter, grounded generation/explanation/patch proposal | Local generation adapter implemented with HCL parse gate and explicit preview/save; live inference, fine-tune, explanations, repairs, and re-test feedback loop remain. |
+| M5 - Local AI workflow | Ollama adapter, grounded generation/explanation/patch proposal | Local inference exercised with HCL parse gate and explicit preview/save; fine-tune, provider validation, explanations, repairs, and re-test feedback loop remain. |
 | M6 - Demo hardening | Demo fixtures, tests, screenshots/video, presentation | Repeatable 5-7 minute demo from a clean setup. |
 
 ## 8. Testing strategy

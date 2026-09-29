@@ -41,6 +41,12 @@ This file records real work, decisions, tests, and blockers and is included in t
 - Current Python PyTorch is CPU-only; no CUDA training stack has been installed or training run performed.
 - Windows/Linux desktop artifacts and new GitHub checks need hosted verification. Do not merge until required checks are green; runner spending limits can block matrix jobs.
 
+**GitHub state after push**
+
+- Pushed commit `6ce24288` to the `testing` branch; PR #6 updated automatically. The PR page reports 26 failing checks, 11 queued, and 2 skipped (snapshot at 2026-09-29). The push-triggered TerraMind ML validation and Linux/Windows packaging checks also failed quickly; full logs were not available in the connected page at inspection time, so their root causes are not yet established.
+- The open Dependabot PRs likewise have failing and queued upstream Code-OSS checks. No PR was merged or closed, and `main` was not changed. Merging is deferred until failures are understood and required checks pass.
+- A root-wide `pytest` invocation was not a valid project test command because it collected unrelated VS Code Copilot fixture tests; the supported analyzer suite from `services/analyzer-api` passed 22 tests.
+
 ## Log
 
 ### 2026-09-28 - Project concept converted into an implementation plan
