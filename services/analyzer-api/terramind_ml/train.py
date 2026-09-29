@@ -6,6 +6,7 @@ import argparse
 import csv
 import hashlib
 import json
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,12 @@ def train(dataset_path: Path, model_path: Path, metrics_path: Path) -> dict[str,
         "logistic_regression_grouped_oof": _metrics(labels, oof_probabilities),
         "dummy_prior_grouped_oof": _metrics(labels, baseline_probabilities),
         "evaluation": f"{n_splits}-fold GroupKFold; both members of each control pair stay in one fold",
+        "uncertainty": {
+            "method": "95% percentile interval from 2,000 bootstrap resamples of control-pair groups over fixed out-of-fold predictions",
+            "balanced_accuracy": _grouped_bootstrap_interval(labels, oof_probabilities, groups, balanced_accuracy_score),
+            "pr_auc": _grouped_bootstrap_interval(labels, oof_probabilities, groups, average_precision_score),
+            "caveat": "Intervals reflect variation across the 23 benchmark control pairs; they do not establish external or production generalization.",
+        },
     }
 
     pipeline.fit(features, labels)
@@ -123,6 +130,38 @@ def _metrics(labels: list[int], probabilities) -> dict[str, Any]:
         "brier_score": float(brier_score_loss(labels, probabilities)),
         "confusion_matrix_labels_0_1": confusion_matrix(labels, predictions, labels=[0, 1]).tolist(),
     }
+
+
+def _grouped_bootstrap_interval(labels, probabilities, groups, metric) -> list[float]:
+    """Estimate metric uncertainty by resampling complete control pairs."""
+    group_indices: dict[str, list[int]] = {}
+    for index, group in enumerate(groups):
+        group_indices.setdefault(group, []).append(index)
+
+    group_ids = sorted(group_indices)
+    randomizer = random.Random(42)
+    estimates: list[float] = []
+    for _ in range(2000):
+        sampled_groups = [randomizer.choice(group_ids) for _ in group_ids]
+        sampled_indices = [index for group in sampled_groups for index in group_indices[group]]
+        sample_labels = [labels[index] for index in sampled_indices]
+        sample_probabilities = [probabilities[index] for index in sampled_indices]
+        metric_inputs = (
+            [int(value >= 0.5) for value in sample_probabilities]
+            if metric is balanced_accuracy_score else sample_probabilities
+        )
+        estimates.append(float(metric(sample_labels, metric_inputs)))
+
+    estimates.sort()
+    return [_percentile(estimates, 0.025), _percentile(estimates, 0.975)]
+
+
+def _percentile(sorted_values: list[float], percentile: float) -> float:
+    position = (len(sorted_values) - 1) * percentile
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(sorted_values) - 1)
+    fraction = position - lower_index
+    return sorted_values[lower_index] * (1 - fraction) + sorted_values[upper_index] * fraction
 
 
 def _validate_complete_groups(groups: list[str], labels: list[int]) -> None:

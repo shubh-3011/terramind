@@ -45,6 +45,10 @@ def test_training_groups_pairs_and_exports_runtime_model(tmp_path):
     assert artifact["training"]["sample_count"] == 24
     assert artifact["training"]["control_pair_count"] == 12
     assert artifact["training"]["evaluation"]["evaluation"].startswith("5-fold GroupKFold")
+    uncertainty = artifact["training"]["evaluation"]["uncertainty"]
+    assert uncertainty["method"].startswith("95% percentile interval")
+    assert 0 <= uncertainty["balanced_accuracy"][0] <= uncertainty["balanced_accuracy"][1] <= 1
+    assert 0 <= uncertainty["pr_auc"][0] <= uncertainty["pr_auc"][1] <= 1
     assert prediction is not None
     assert prediction["source"] == "experimental-ml"
     assert prediction["calibrated"] is False

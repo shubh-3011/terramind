@@ -104,7 +104,7 @@ The required model predicts binary risk/failure probability. Compare logistic re
 | M0 - Fork foundation | Clone/pin Code-OSS, TerraMind product branding, build prerequisites, tool preflight | Source snapshot and branding exist; development build still blocked/unverified by Windows native dependencies. |
 | M1 - Deterministic analyzer | HCL parse diagnostics, bounded workspace scan, report schema, tested rules, then Terraform/TFLint/Checkov adapters | HCL/static slice passes tests; CLI/scanner integrations and broader rules remain. |
 | M2 - Dataset pipeline | Acquisition manifest, parser/features, mutations, dataset version | Pinned 46-case AWS feature dataset builds reproducibly; larger independently sourced data remains needed. |
-| M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Experimental logistic baseline, grouped OOF metrics, and portable model artifact exist; no calibration or external validation. |
+| M3 - ML baseline | Baseline/model comparison, calibration, evaluation report | Experimental logistic baseline, grouped OOF metrics, pair-group bootstrap intervals, reproducible training workflow, and portable model artifact; no external validation or calibration. |
 | M4 - Native workbench UX | Built-in commands, diagnostics, TerraMind panel/dialog | Analyze a workspace and navigate to findings. |
 | M5 - Local AI workflow | Ollama adapter, grounded generation/explanation/patch proposal | Previewed patch is user-approved and re-tested. |
 | M6 - Demo hardening | Demo fixtures, tests, screenshots/video, presentation | Repeatable 5-7 minute demo from a clean setup. |

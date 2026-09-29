@@ -45,6 +45,7 @@ On the pinned 46-sample AWS subset, five-fold grouped out-of-fold evaluation pro
 
 - Logistic regression: balanced accuracy **0.674**, ROC-AUC **0.709**, PR-AUC **0.764**, precision **0.700**, recall **0.609**, F1 **0.651**, Brier score **0.209**.
 - Dummy-prior baseline: balanced accuracy **0.500**, ROC-AUC **0.500**, PR-AUC **0.500**.
+- Resampling complete control pairs over the fixed out-of-fold predictions gives 95% percentile intervals of **0.587–0.783** for balanced accuracy and **0.656–0.867** for PR-AUC (2,000 seeded resamples). These intervals quantify variation across the 23 benchmark control pairs only; they are not external validation or production uncertainty guarantees.
 - Logistic confusion matrix (true rows 0/1, predicted columns 0/1): `[[17, 6], [9, 14]]`.
 
 The exact generated evaluation is [reports/terraform-risk-v1-metrics.json](../reports/terraform-risk-v1-metrics.json); the exported artifact records the dataset SHA-256 and grouped-evaluation method. The score is a prototype result on a very small, controlled/generated sample. It has not been calibrated, externally validated on labeled repositories, or evaluated against real deployment outcomes. Do not use it for production decisions or claim that the score generalizes.

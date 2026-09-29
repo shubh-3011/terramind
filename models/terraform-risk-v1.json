@@ -153,6 +153,18 @@
         "precision": 0.7,
         "recall": 0.6086956521739131,
         "roc_auc": 0.7088846880907372
+      },
+      "uncertainty": {
+        "balanced_accuracy": [
+          0.5869565217391304,
+          0.7826086956521738
+        ],
+        "caveat": "Intervals reflect variation across the 23 benchmark control pairs; they do not establish external or production generalization.",
+        "method": "95% percentile interval from 2,000 bootstrap resamples of control-pair groups over fixed out-of-fold predictions",
+        "pr_auc": [
+          0.6562794111445632,
+          0.8666272072117647
+        ]
       }
     },
     "label_definition": "benchmark control violation; not deployment failure/outage probability",
