@@ -1,0 +1,164 @@
+{
+  "calibrated": false,
+  "coefficients": [
+    0.0,
+    -0.18057417360393854,
+    -0.12533029025644934,
+    -0.12533029025644934,
+    0.0,
+    0.0,
+    -0.08973891222818622,
+    0.04907361483825264,
+    0.11120971644317354,
+    -0.16295758736732585,
+    0.6216688191303008,
+    0.0,
+    0.0,
+    0.6319586463885347,
+    0.2395445337721022,
+    0.0,
+    0.9037334645721992,
+    0.0,
+    0.22828464239020968,
+    -0.8267067188706162,
+    -0.16295758736732577
+  ],
+  "feature_names": [
+    "terraform_file_count",
+    "noncomment_line_count",
+    "resource_count",
+    "aws_resource_count",
+    "module_count",
+    "provider_count",
+    "network_resource_count",
+    "storage_resource_count",
+    "iam_resource_count",
+    "public_cidr_count",
+    "public_ssh_ingress_count",
+    "wildcard_iam_action_count",
+    "wildcard_iam_resource_count",
+    "disabled_encryption_count",
+    "disabled_public_access_control_count",
+    "public_acl_count",
+    "public_exposure_flag_count",
+    "logging_disabled_count",
+    "sensitive_boolean_false_count",
+    "sensitive_boolean_true_count",
+    "weak_security_literal_count"
+  ],
+  "feature_version": "terraform-risk-features-v1",
+  "intercept": 0.06414968707949623,
+  "limitations": [
+    "Small controlled benchmark; not evidence of production generalization.",
+    "Labels describe a named security control, not deployment failure, uptime, scalability, or cost.",
+    "Cross-validation groups vulnerable/compliant variants by control, but the training corpus is still generated and narrow.",
+    "Probability is not calibrated and must be displayed as experimental."
+  ],
+  "model_type": "standardized-logistic-regression",
+  "model_version": "terraform-risk-iacsecbench-v1",
+  "standardization": {
+    "mean": [
+      2.0,
+      38.41304347826087,
+      2.0869565217391304,
+      2.0869565217391304,
+      0.0,
+      0.0,
+      0.30434782608695654,
+      0.5,
+      0.5217391304347826,
+      0.043478260869565216,
+      0.021739130434782608,
+      0.0,
+      0.0,
+      0.043478260869565216,
+      0.08695652173913043,
+      0.0,
+      0.043478260869565216,
+      0.0,
+      0.2608695652173913,
+      0.7608695652173914,
+      0.043478260869565216
+    ],
+    "scale": [
+      1.0,
+      7.702557697613576,
+      0.8803676839702864,
+      0.8803676839702864,
+      1.0,
+      1.0,
+      0.6874516652539951,
+      0.7731921410338582,
+      0.5800723506141885,
+      0.20393111999232305,
+      0.14583052027172536,
+      1.0,
+      1.0,
+      0.20393111999232308,
+      0.5833220810869016,
+      1.0,
+      0.20393111999232305,
+      1.0,
+      0.7050989017489936,
+      0.9368026707137063,
+      0.20393111999232305
+    ]
+  },
+  "threshold": 0.5,
+  "training": {
+    "class_counts": {
+      "compliant": 23,
+      "violation": 23
+    },
+    "control_pair_count": 23,
+    "dataset_sha256": "4d727ed55188e26cccb040358b4d86c641f2ac68b338fdbed5fed694e4f786fa",
+    "evaluation": {
+      "dummy_prior_grouped_oof": {
+        "accuracy": 0.5,
+        "balanced_accuracy": 0.5,
+        "brier_score": 0.25,
+        "confusion_matrix_labels_0_1": [
+          [
+            0,
+            23
+          ],
+          [
+            0,
+            23
+          ]
+        ],
+        "f1": 0.6666666666666666,
+        "pr_auc": 0.5,
+        "precision": 0.5,
+        "recall": 1.0,
+        "roc_auc": 0.5
+      },
+      "evaluation": "5-fold GroupKFold; both members of each control pair stay in one fold",
+      "logistic_regression_grouped_oof": {
+        "accuracy": 0.6739130434782609,
+        "balanced_accuracy": 0.6739130434782609,
+        "brier_score": 0.2089400944544128,
+        "confusion_matrix_labels_0_1": [
+          [
+            17,
+            6
+          ],
+          [
+            9,
+            14
+          ]
+        ],
+        "f1": 0.6511627906976745,
+        "pr_auc": 0.7635899877544813,
+        "precision": 0.7,
+        "recall": 0.6086956521739131,
+        "roc_auc": 0.7088846880907372
+      }
+    },
+    "label_definition": "benchmark control violation; not deployment failure/outage probability",
+    "sample_count": 46,
+    "scikit_learn_version": "1.9.1",
+    "source_commit": "6e359ac29dcde1974d792f454e1a48dfd9deeaa6",
+    "source_url": "https://github.com/mchittineni/iacsecbench"
+  }
+}
