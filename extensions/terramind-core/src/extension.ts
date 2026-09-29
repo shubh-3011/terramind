@@ -30,6 +30,7 @@ interface GenerationResult {
 	readonly validation_scope: string;
 	readonly findings?: readonly AnalysisFinding[];
 	readonly service_ratings?: readonly ServiceRating[];
+	readonly checks?: Readonly<Record<string, string>>;
 }
 
 interface AnalysisFinding {
@@ -213,16 +214,20 @@ export function activate(context: vscode.ExtensionContext): void {
 		});
 		try {
 			const model = vscode.workspace.getConfiguration('terramind').get<string>('generationModel', 'qwen2.5-coder:3b');
+			const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
 			const generated = await vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
 				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with local Ollama'),
 				cancellable: false
-			}, () => requestGeneration(requirements.trim(), constraints?.trim() ?? '', model));
+			}, () => requestGeneration(requirements.trim(), constraints?.trim() ?? '', model, workspaceFolder.uri.fsPath, runExternalTools));
 			if (!generated.syntax_valid) {
 				throw new Error('The generated draft did not pass HCL syntax parsing.');
 			}
 			output.appendLine(`Generated Terraform draft with ${generated.model}. ${generated.validation_scope}`);
 			const findings = generated.findings ?? [];
+			for (const [check, status] of Object.entries(generated.checks ?? {})) {
+				output.appendLine(`GENERATED CHECK ${check}: ${status}`);
+			}
 			const errors = findings.filter(finding => finding.severity === 'error').length;
 			const warnings = findings.filter(finding => finding.severity === 'warning').length;
 			for (const finding of findings) {
@@ -236,8 +241,9 @@ export function activate(context: vscode.ExtensionContext): void {
 			output.show(true);
 			const preview = await vscode.workspace.openTextDocument({ language: 'terraform', content: generated.terraform });
 			await vscode.window.showTextDocument(preview, { preview: false });
+			const providerValidation = generated.checks?.terraform_validate ?? vscode.l10n.t('not_run: no validation status returned');
 			const choice = await vscode.window.showInformationMessage(
-				vscode.l10n.t('Draft parsed as HCL; static checks found {0} error(s) and {1} warning(s). Provider compatibility, cost, and deployment behavior are not verified.', errors, warnings),
+				vscode.l10n.t('Draft parsed as HCL; static/CLI checks found {0} error(s) and {1} warning(s). Terraform validate: {2}. Cost, runtime availability, and deployment behavior are not verified.', errors, warnings, providerValidation),
 				{ modal: true },
 				vscode.l10n.t('Save Draft to Workspace'),
 				vscode.l10n.t('Discard')
@@ -295,12 +301,24 @@ async function requestAnalysis(workspacePath: string, runExternalTools: boolean)
 	return await response.json() as AnalysisResult;
 }
 
-async function requestGeneration(description: string, constraints: string, model: string): Promise<GenerationResult> {
+async function requestGeneration(
+	description: string,
+	constraints: string,
+	model: string,
+	workspacePath: string,
+	runExternalTools: boolean
+): Promise<GenerationResult> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
 	const response = await fetch(`${analyzerUrl}/v1/generate`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ description, constraints, model })
+		body: JSON.stringify({
+			description,
+			constraints,
+			model,
+			workspace_path: workspacePath,
+			run_external_tools: runExternalTools
+		})
 	});
 	if (!response.ok) {
 		const error = await response.json().catch(() => undefined) as { detail?: string } | undefined;

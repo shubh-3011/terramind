@@ -15,7 +15,7 @@ TerraMind is a Code-OSS fork. Its Terraform-specific commands and panels are bui
 
 ## TerraMind workbench user interface
 
-The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Analyze Workspace publishes returned findings into Problems. Generate Infrastructure collects requirements, previews HCL from local Ollama or the configured local Transformers model, and writes only after explicit user save/overwrite approval. Per-service summaries currently score only observed static security evidence; cost, reliability, scalability, and maintainability are explicit unknowns. Repair remains planned:
+The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Analyze Workspace publishes returned findings into Problems. Generate Infrastructure collects requirements, previews HCL from local Ollama or the configured local Transformers model, and writes only after explicit user save/overwrite approval. When the existing **Run External Tools** setting is enabled and a pre-initialized local provider cache is available, the generated draft is also checked with `terraform validate` in an isolated scratch directory before preview; this does not run `terraform init`. Per-service summaries currently score only observed static security evidence; cost, reliability, scalability, and maintainability are explicit unknowns. Repair remains planned:
 
 | Surface | Purpose |
 | --- | --- |
@@ -23,7 +23,7 @@ The TerraMind fork adds these first-class workbench surfaces to Code-OSS. Analyz
 | Terraform diagnostics | Display tool findings and compatibility errors inline at relevant `.tf` locations. |
 | TerraMind analysis panel | Show tool status, overall ML risk, service ratings, evidence, and actions. |
 | Generate Infrastructure dialog | Collect free-text intent and constraints; structured region/resource/workload fields remain planned. |
-| Draft preview | Show generated HCL plus TerraMind static AWS findings and evidence-limited service ratings before the user chooses an in-workspace path; provider compatibility remains unverified. |
+| Draft preview | Show generated HCL, static AWS findings, evidence-limited service ratings, and optional cached-provider validation findings before the user chooses an in-workspace path. |
 
 ## Rating contract
 
@@ -85,7 +85,7 @@ When a compatible model artifact exists and every Terraform file parses, the API
 
 ### `POST /v1/generate` (implemented, local model required)
 
-Request contains a bounded description, constraints, and optional installed Ollama model name. The API talks only to loopback Ollama by default or an explicitly configured local Transformers model. It parses the HCL, runs the existing deterministic security rules in memory, and returns findings plus limited service ratings without writing files. The editor previews the code and findings; saving is user initiated. Provider schemas, references, external scanners, costs, and runtime/deployment behavior are not validated by this endpoint.
+Request contains a bounded description, constraints, workspace path, optional installed Ollama model name, and an external-tools opt-in flag. The API talks only to loopback Ollama by default or an explicitly configured local Transformers model. It parses the HCL, runs the existing deterministic security rules in memory, and may run `terraform validate` against provider binaries already installed in that workspace. Validation copies/hard-links the provider cache and lockfile into a disposable scratch directory, strips cloud/`TF_*` credentials, invokes no shell, and never runs `init`, `plan`, or `apply`. It returns findings and limited service ratings without writing generated source to the workspace. The editor previews the code and findings; saving is user initiated. References requiring uninstalled modules/providers, external scanners, costs, and runtime/deployment behavior may remain unverified.
 
 Response includes the HCL and scope disclaimer, and the same finding/service-rating shapes used by workspace analysis:
 
@@ -93,9 +93,10 @@ Response includes the HCL and scope disclaimer, and the same finding/service-rat
 {
   "status": "completed",
   "syntax_valid": true,
-  "validation_scope": "HCL syntax parsing and TerraMind static security heuristics only; provider schemas ... are not verified.",
+  "validation_scope": "HCL syntax/static checks; terraform_validate=not_run: external tools disabled.",
   "findings": [{"id": "main.tf:TM-NET-001:2", "source": "terramind-rules", "rule_id": "TM-NET-001", "severity": "error", "file": "main.tf", "line": 2, "message": "..."}],
-  "service_ratings": [{"service": "networking", "resource_count": 1, "dimensions": {"security": {"score": 65, "status": "limited", "evidence_finding_ids": ["main.tf:TM-NET-001:2"]}, "reliability": {"score": null, "status": "insufficient_information"}}}]
+  "service_ratings": [{"service": "networking", "resource_count": 1, "dimensions": {"security": {"score": 65, "status": "limited", "evidence_finding_ids": ["main.tf:TM-NET-001:2"]}, "reliability": {"score": null, "status": "insufficient_information"}}}],
+  "checks": {"hcl_parse": "passed", "terraform_validate": "not_run: external tools disabled"}
 }
 ```
 

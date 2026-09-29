@@ -1,6 +1,6 @@
 # TerraMind progress log
 
-> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; generated HCL now receives TerraMind static security checks and evidence-limited service ratings before preview. An evaluation harness measures local HCL parse rate and resource-type overlap on the repository-disjoint split. The 31-test API/data/training/evaluation suite and extension compilation (0 TypeScript errors) pass. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA; 3-example evaluation of the 0.6B smoke model parsed 1/3 and rejected 2/3, so no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
+> **Current status (2026-09-29):** local generation is available through Ollama or an explicitly configured local Transformers model; generated HCL receives TerraMind static security checks and evidence-limited service ratings, plus optional preinitialized-cache Terraform provider validation before preview. An evaluation harness measures local HCL parse rate and resource-type overlap on the repository-disjoint split. The 34-test API/data/training/evaluation suite passes. Extension compilation was verified in an earlier session, but could not be rerun in this checkout because its VS Code gulpfile and compiler package are absent. The filtered corpus has 43,561 train and 2,229 validation rows. Short Qwen3-0.6B and Qwen3-1.7B LoRA runs completed on CUDA; 3-example evaluation of the 0.6B smoke model parsed 1/3 and rejected 2/3, so no model-quality claim is made. Current scope estimate: about 65% by milestone coverage. Desktop packaging and GitHub checks remain blockers.
 
 This file records real work, decisions, tests, and blockers and is included in the private GitHub repository by owner decision. Add an entry for each meaningful work session; do not claim unrun tests or unimplemented features.
 
@@ -18,9 +18,19 @@ This file records real work, decisions, tests, and blockers and is included in t
 | M1 - Deterministic analyzer | Partial | HCL parsing, AWS heuristic rules, opt-in CLI/scanner adapters, API tests, and Problems diagnostics; workspace authorization and live tool tests remain. |
 | M2 - Dataset pipeline | Partial | Pinned 46-row AWS risk dataset plus a license-aware SFT preparation pipeline; locally prepared 43,561 train / 2,229 validation rows; larger independent risk labels remain. |
 | M3 - ML baseline | Partial | Grouped OOF logistic baseline, pair-group bootstrap intervals, and portable inference; tiny sample, no external holdout. |
-| M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview and explicit save; generated previews now log static findings and evidence-limited ratings; runtime UI tests remain. |
-| M5 - Local AI workflow | Partial | Ollama and optional Transformers-backed generation with preview/save; two short CUDA LoRA runs completed. One output passed HCL syntax but failed AWS provider v6.66.0 schema validation (5 errors); another failed HCL parsing. Model quality remains unproven. |
-| M6 - Demo hardening | Partial | 31 API/data/training/evaluation-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+| M4 - Native workbench UX | Partial | Analyze/Generate commands, activity-bar/Problems integration, draft preview/save, static findings, evidence-limited ratings, and optional line-specific provider validation; runtime UI tests remain. |
+| M5 - Local AI workflow | Partial | Ollama and optional Transformers-backed generation; optional schema checks against preinitialized providers; two short CUDA LoRA runs completed. One output passed HCL syntax but failed AWS provider v6.66.0 validation (5 errors); another failed HCL parsing. Model quality remains unproven. |
+| M6 - Demo hardening | Partial | 34 API/data/training/evaluation-script tests; pinned risk evaluation and short SFT smoke metrics. Clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
+
+### 2026-09-29 - Validate generated HCL against a local provider cache
+
+**Implemented and verified locally**
+
+- Added an opt-in generated-draft `terraform validate` path tied to the existing `terramind.analysis.runExternalTools` setting. It requires an existing `.terraform.lock.hcl` and `.terraform/providers` cache; if either is absent, it reports a clear not-run state.
+- Validation runs in a disposable scratch directory using hardlinked/copied provider files and the lockfile. It does not run `terraform init`, `plan`, or `apply`; it invokes no shell, has a 45-second timeout, isolates Terraform's data/home directories, and removes cloud, `TF_*`, Vault, and related credential variables before launching Terraform/provider plugins.
+- The Generate command reports the check status and line-specific validation findings before the save prompt. Saving still requires explicit in-workspace confirmation.
+- Verified with Terraform 1.16.4 and the locally initialized HashiCorp AWS provider 6.66.0: an intentionally incompatible generated draft produced three schema errors on exact lines. No network initialization or cloud call was made.
+- Added validator/API opt-in tests, including default-off behavior, missing-cache behavior, credential scrubbing, and scratch-directory cleanup. Analyzer suite: 34 passing. A fresh extension compile could not run in this checkout: `extensions/terramind-core/node_modules/vscode/bin/compile` and `build/gulpfile.extensions.mjs` are absent. An earlier checkout/session reported successful extension compilation; this turn does not independently reconfirm it.
 
 ### 2026-09-29 - Analyze generated Terraform before preview
 
@@ -65,7 +75,7 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The open Dependabot PRs likewise have failing and queued upstream Code-OSS checks. No PR was merged or closed, and `main` was not changed. Merging is deferred until failures are understood and required checks pass.
 - A root-wide `pytest` invocation was not a valid project test command because it collected unrelated VS Code Copilot fixture tests; the supported analyzer suite from `services/analyzer-api` passed 22 tests.
 
-**GitHub check snapshot (2026-09-29, after push `3701b1cc`)**
+**Historical GitHub check snapshot (2026-09-29, after push `3701b1cc`; superseded by later pushes)**
 
 - PR #6 tracks `testing` at `3701b1cc`. New `TerraMind ML validation` run #19 failed after 4 seconds; its annotation again states the job was not started because recent account payments failed or the spending limit needs to be increased. Code OSS run #27 was queued at inspection, while several other PR checks showed quick failures. This repeated annotation confirms the account blocker; queued or quick-failing checks should not be treated as source-level failures until their jobs actually start.
 - The five Dependabot PRs remain open with incomplete/failing upstream checks (11–13 failures and 12 incomplete per PR in the last full status snapshot); several checks succeeded, but none of those PRs was green in that snapshot.

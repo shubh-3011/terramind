@@ -212,7 +212,7 @@ def test_generate_returns_parseable_hcl_without_writing_files(tmp_path):
     assert response.status_code == 200
     assert response.json()["syntax_valid"] is True
     assert response.json()["model"] == "qwen2.5-coder:3b"
-    assert "not verified" in response.json()["validation_scope"]
+    assert "does not verify" in response.json()["validation_scope"]
     assert list(tmp_path.iterdir()) == []
 
 
@@ -250,6 +250,48 @@ def test_generate_runs_static_security_checks_before_preview():
     networking = next(rating for rating in generated["service_ratings"] if rating["service"] == "networking")
     assert networking["dimensions"]["security"]["score"] == 65
     assert "static security heuristics only" in generated["validation_scope"]
+
+
+def test_generate_can_opt_into_cached_provider_validation(tmp_path):
+    from app.main import Finding
+
+    validation_finding = Finding(
+        id="main.tf:TF-VALIDATE:4:0", source="terraform-cli", rule_id="TF-VALIDATE",
+        severity="error", message="Unsupported argument", file="main.tf", line=4,
+    )
+    class OllamaResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps({
+                "model": "test-model",
+                "response": 'resource "aws_s3_bucket" "example" { invalid_argument = true }',
+            }).encode("utf-8")
+
+    class OllamaOpener:
+        def open(self, *_args, **_kwargs):
+            return OllamaResponse()
+
+    with patch("app.main.urllib.request.build_opener", return_value=OllamaOpener()), patch(
+        "app.generated_validator.run_generated_terraform_validation",
+        return_value=("failed: 1 error(s), 0 warning(s)", [validation_finding]),
+    ) as validate:
+        response = client.post("/v1/generate", json={
+            "description": "Create a private S3 bucket",
+            "workspace_path": str(tmp_path),
+            "run_external_tools": True,
+        })
+
+    assert response.status_code == 200
+    generated = response.json()
+    assert generated["checks"]["terraform_validate"] == "failed: 1 error(s), 0 warning(s)"
+    assert any(finding["rule_id"] == "TF-VALIDATE" for finding in generated["findings"])
+    validate.assert_called_once()
+    assert validate.call_args.args[1] == str(tmp_path)
 
 
 def test_generate_rejects_unparseable_model_output():

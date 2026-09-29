@@ -4,7 +4,7 @@
 
 The built-in **Generate Infrastructure** command collects a resource/connectivity description and constraints, calls a locally hosted Ollama model through the loopback-only analyzer API, parses the returned text as HCL, and opens it for review. Nothing is written until the user selects **Save Draft to Workspace**, chooses a path inside the open workspace, and confirms any overwrite. The saved draft is then sent through workspace analysis.
 
-TerraMind now has an experimental LoRA fine-tuning path, and `/v1/generate` can use a locally merged Transformers model when `TERRAMIND_HF_MODEL_PATH` points to it. Ollama remains the default backend when that variable is unset. The logistic-regression model is a separate, small binary risk estimator and does not generate Terraform. Neither model provides cost, uptime, scalability, or production-security guarantees. The generation route verifies HCL syntax only; Terraform provider/schema validation is separate.
+TerraMind now has an experimental LoRA fine-tuning path, and `/v1/generate` can use a locally merged Transformers model when `TERRAMIND_HF_MODEL_PATH` points to it. Ollama remains the default backend when that variable is unset. The logistic-regression model is a separate, small binary risk estimator and does not generate Terraform. Neither model provides cost, uptime, scalability, or production-security guarantees. HCL parsing and TerraMind static checks always run; optional Terraform provider/schema validation runs only when `terramind.analysis.runExternalTools` is enabled and an existing provider cache and lockfile are present. It uses the installed Terraform binary from `PATH` or `TERRAMIND_TERRAFORM_PATH`, and never runs `terraform init`, `plan`, or `apply`.
 
 ## Run a local model
 

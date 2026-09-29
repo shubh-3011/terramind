@@ -44,6 +44,8 @@ class GenerateRequest(BaseModel):
     description: str = Field(min_length=10, max_length=10_000)
     constraints: str = Field(default="", max_length=10_000)
     model: str | None = Field(default=None, min_length=1, max_length=100)
+    workspace_path: str | None = Field(default=None, max_length=4096)
+    run_external_tools: bool = False
 
 
 class Finding(BaseModel):
@@ -67,6 +69,7 @@ class GenerateResponse(BaseModel):
     validation_scope: str
     findings: list[Finding]
     service_ratings: list[dict[str, Any]]
+    checks: dict[str, str]
 
 
 class AnalyzeResponse(BaseModel):
@@ -197,7 +200,9 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
     if hf_model_path:
         response_model, terraform = _generate_with_transformers(hf_model_path, prompt)
-        return _validated_generation_response(response_model, terraform)
+        return _validated_generation_response(
+            response_model, terraform, request.workspace_path, request.run_external_tools,
+        )
 
     ollama_url = os.environ.get("TERRAMIND_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     try:
@@ -244,7 +249,9 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     terraform = result.get("response") if isinstance(result, dict) else None
     if not isinstance(terraform, str) or not terraform.strip():
         raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
-    return _validated_generation_response(str(result.get("model", model)), terraform)
+    return _validated_generation_response(
+        str(result.get("model", model)), terraform, request.workspace_path, request.run_external_tools,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -296,7 +303,12 @@ def _generate_with_transformers(model_path: str, prompt: str) -> tuple[str, str]
     return f"transformers:{Path(resolved_path).name}", generated
 
 
-def _validated_generation_response(model: str, terraform: str) -> GenerateResponse:
+def _validated_generation_response(
+    model: str,
+    terraform: str,
+    workspace_path: str | None = None,
+    run_external_tools: bool = False,
+) -> GenerateResponse:
     if not isinstance(terraform, str) or not terraform.strip():
         raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
     terraform = _strip_hcl_fence(terraform.strip())
@@ -311,17 +323,34 @@ def _validated_generation_response(model: str, terraform: str) -> GenerateRespon
         ) from error
 
     findings = _static_security_findings(document, terraform, "main.tf")
+    checks = {
+        "hcl_parse": "passed",
+        "terraform_validate": "not_run: external tools disabled",
+    }
+    if run_external_tools:
+        from app.generated_validator import run_generated_terraform_validation
+
+        checks["terraform_validate"], terraform_findings = run_generated_terraform_validation(
+            terraform, workspace_path,
+        )
+        findings.extend(terraform_findings)
     from app.ratings import build_service_ratings
 
     service_ratings = build_service_ratings([document], findings)
+    validation_scope = (
+        "HCL syntax parsing and TerraMind static security heuristics only; "
+        f"Terraform provider validation: {checks['terraform_validate']}. "
+        "This does not verify costs, runtime availability, scalability, or deployment behavior."
+    )
     return GenerateResponse(
         status="completed",
         model=model,
         terraform=terraform,
         syntax_valid=True,
-        validation_scope="HCL syntax parsing and TerraMind static security heuristics only; provider schemas, references, external scanners, costs, and deployment behavior are not verified.",
+        validation_scope=validation_scope,
         findings=findings,
         service_ratings=service_ratings,
+        checks=checks,
     )
 
 

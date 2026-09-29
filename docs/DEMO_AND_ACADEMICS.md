@@ -6,11 +6,11 @@
 2. Run **TerraMind: Analyze Workspace**.
 3. Show HCL parse diagnostics and the current network, IAM, S3, ECR, EC2, and EBS static rules in Problems, including dynamic ingress resolution/review behavior.
 4. Show the experimental, uncalibrated model estimate and its training-set limits; distinguish it from deterministic findings.
-5. Generate an intentionally unsafe Terraform draft; show that static findings and limited ratings are returned before preview/save. Explain that this is not provider schema validation.
-6. Optionally enable external tools only on a trusted workspace and show explicit passed/failed/not-run states; no `init`, `plan`, or `apply` is run.
+5. Generate an intentionally unsafe Terraform draft; show static findings and limited ratings before preview/save. If the workspace has a local initialized provider cache, opt into external tools and show the pre-save `terraform validate` findings too.
+6. Explain that provider validation may execute installed plugins and is opt-in; no `init`, `plan`, or `apply` is run.
 7. Show the analyzer tests and explain the current limits: heuristics and the narrow model do not establish compatibility or operational cloud quality.
 
-The API/ML/data/training/evaluation suite has 31 passing tests, including a mocked generated draft that demonstrates static security findings/service ratings and evaluator tests that ensure reports do not retain raw prompts/code and keep undefined metrics unknown. A 3-example local 0.6B held-out evaluation parsed 1 response and rejected 2 as invalid HCL; this tiny sample does not establish quality. The full fork launch remains unverified. Extension compilation alone does not establish a successful full Code-OSS build.
+The API/ML/data/training/evaluation suite has 34 passing tests, including mocked pre-save provider validation and checks that ensure local provider plugins receive no cloud/`TF_VAR` credentials. A real local AWS-provider run on an isolated generated draft reported three schema errors without running `terraform init`. A 3-example local 0.6B held-out evaluation parsed 1 response and rejected 2 as invalid HCL; this tiny sample does not establish quality. The full fork launch remains unverified. Extension compilation passed in an earlier session but cannot be rerun in the current checkout; even a successful extension compile would not establish a successful full Code-OSS build.
 
 ## Planned final demo (5-7 minutes)
 
