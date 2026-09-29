@@ -14,7 +14,7 @@ TerraMind does not copy the benchmark's Terraform files into this repository. It
 
 ## Feature pipeline
 
-`terramind_ml.features` parses `.tf` files with `python-hcl2` and emits the versioned numeric schema `terraform-risk-features-v1`. Features cover file/resource structure and a few generic security-sensitive indicators (public CIDRs, SSH exposure, wildcard IAM values, disabled encryption/public controls, sensitive false flags, and weak mode/protocol literals). This is a deliberately simple feature baseline, not full Terraform semantic analysis.
+`terramind_ml.features` parses `.tf` files with `python-hcl2` and emits the versioned numeric schema `terraform-risk-features-v1`. Features cover file/resource structure and a few generic security-sensitive indicators (public CIDRs, SSH exposure including supported dynamic blocks driven by literal locals, wildcard IAM values, disabled encryption/public controls, sensitive false flags, and weak mode/protocol literals). This is a deliberately simple feature baseline, not full Terraform semantic analysis.
 
 Benchmark HCL is parsed into structured values; expected-label comments are not passed to the model. Training validates that each group has exactly one compliant and one violation member. Five-fold `GroupKFold` keeps both variants of every control pair in the same fold. `sample_id` and `group_id` are used only for provenance and splitting, never as model features.
 

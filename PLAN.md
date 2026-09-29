@@ -1,6 +1,6 @@
 # TerraMind implementation blueprint
 
-> **Live status (2026-09-28):** The private Code-OSS source snapshot, TerraMind identity, analyzer first slice, and bundled editor diagnostics are in place. An experimental logistic-regression baseline is trained on 46 generated AWS control cases with pair-grouped cross-validation; it is explicitly not production-ready. The desktop app remains unverified. See [PROGRESS.md](PROGRESS.md) and [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md).
+> **Live status (2026-09-29):** TerraMind is a private Code-OSS fork with a bundled Analyze command, static AWS/HCL findings, Problems diagnostics, and a small experimental logistic-regression baseline trained on 46 generated AWS cases with paired grouped cross-validation. Analyzer/ML tests (11) and extension compilation pass. The full editor build/launch and fresh GitHub PR build checks remain unverified; see [PROGRESS.md](PROGRESS.md) and [docs/TRAINING_AND_MODEL.md](docs/TRAINING_AND_MODEL.md).
 
 ## 1. Refined problem statement
 
@@ -18,7 +18,7 @@ Terraform authoring tools help with syntax, but generated or hand-written infras
 
 ## 3. Exact MVP scope
 
-**In (target MVP):** a branded Code-OSS fork named TerraMind, Terraform HCL, AWS-focused projects, built-in TerraMind workbench features, local FastAPI service, local Ollama model, `terraform fmt`/`validate`, guarded `plan`, TFLint, Checkov, deterministic finding aggregation, feature extraction, one binary risk model, explanation and patch proposal, patch preview, re-test. **Current implementation is partial:** HCL parsing and initial SSH/IAM heuristics plus a small experimental logistic baseline; Terraform CLI/scanners/LLM integration and production-quality ML validation remain open.
+**In (target MVP):** a branded Code-OSS fork named TerraMind, Terraform HCL, AWS-focused projects, built-in TerraMind workbench features, local FastAPI service, local Ollama model, `terraform fmt`/`validate`, guarded `plan`, TFLint, Checkov, deterministic finding aggregation, feature extraction, one binary risk model, explanation and patch proposal, patch preview, re-test. **Current implementation is partial:** HCL parsing, static AWS rules, bundled Problems diagnostics, and a small experimental logistic baseline are implemented; Terraform CLI/scanners/LLM integration and production-quality ML validation remain open.
 
 **Out:** automatic cloud deployment, multi-cloud support, cost optimization, Kubernetes, Pulumi, CloudFormation, autonomous multi-file edits without review, failure-category model, quality-score model, graph visualization, and production-scale hosted service.
 
@@ -96,6 +96,8 @@ Build a reproducible AWS Terraform corpus from license-compatible public reposit
 The required model predicts binary risk/failure probability. Compare logistic regression, random forest, and XGBoost (only if dependencies/data justify it); select using group-safe validation and calibration, not raw accuracy alone. Details: [docs/DATASET_AND_ML.md](docs/DATASET_AND_ML.md).
 
 ## 7. Milestones
+
+**Current estimate:** roughly 35–40% of agreed MVP scope by milestone coverage (not a schedule estimate). Every milestone remains partial except the unstarted local-AI workflow; the full desktop build and launch are unverified. The [progress log](PROGRESS.md) has the evidence and remaining work for each milestone.
 
 | Milestone | Deliverable | Exit criteria |
 | --- | --- | --- |

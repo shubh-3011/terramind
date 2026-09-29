@@ -35,13 +35,16 @@ terramind/
 
 It is acceptable to implement part of the product feature as a **bundled internal extension** under `extensions/` because it ships in the TerraMind application and is not installed by end users. Workbench-level branding, navigation, and product integration remain in the fork source.
 
-## Current implementation status (2026-09-28)
+## Current implementation status (2026-09-29)
+
+The current MVP is estimated at roughly 35–40% complete by milestone coverage. The workbench's analyzer/ML foundation is in place, but there is no full desktop build, generation/repair flow, or packaged release yet. See the milestone breakdown in [PROGRESS.md](../PROGRESS.md).
 
 - Code-OSS source snapshot imported and Microsoft VS Code retained as `upstream` remote.
 - TerraMind product identity and internal contribution are present.
-- Analyzer API and first-pass Analyze command are present: HCL parse, public SSH/wildcard IAM rules, and Problems diagnostics.
+- Analyzer API and first-pass Analyze command are present: HCL parse, AWS static rules, ML risk estimate, and Problems diagnostics.
 - A compact, grouped-evaluation experimental logistic model is available; it is not a general Terraform code-generation model or production predictor.
-- Full Code-OSS install/build/launch is **not verified**; native Windows build dependencies remain outstanding.
+- TerraMind extension compilation passes with 0 TypeScript errors; analyzer/ML tests pass (11).
+- Full Code-OSS install/build/launch is **not verified**; Windows native build prerequisites and GitHub's upstream-specific self-hosted runners remain outstanding. See the latest build/CI entry in [PROGRESS.md](../PROGRESS.md).
 
 ## Next technical milestones
 
