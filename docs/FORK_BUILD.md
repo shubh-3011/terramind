@@ -45,6 +45,7 @@ The current MVP is estimated at roughly 35–40% complete by milestone coverage.
 - A compact, grouped-evaluation experimental logistic model is available; it is not a general Terraform code-generation model or production predictor.
 - TerraMind extension compilation passes with 0 TypeScript errors; analyzer/ML tests pass (11).
 - Full Code-OSS install/build/launch is **not verified**; Windows native build prerequisites and GitHub's upstream-specific self-hosted runners remain outstanding. See the latest build/CI entry in [PROGRESS.md](../PROGRESS.md).
+- A testing-branch workflow now targets downloadable Windows x64 ZIP and Linux x64 TAR.GZ preview builds. A `terramind-v*` tag produces a draft private release only after both builds succeed; no package is published until a successful run. These alpha packages still require the analyzer API to be started manually and are not end-user-ready.
 
 ## Next technical milestones
 

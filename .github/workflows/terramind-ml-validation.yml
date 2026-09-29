@@ -1,0 +1,75 @@
+name: TerraMind ML validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/terramind-ml-validation.yml'
+      - 'data/processed/terraform-risk-v1.csv'
+      - 'data/manifests/terraform-risk-v1.json'
+      - 'services/analyzer-api/**'
+      - 'models/terraform-risk-v1.json'
+      - 'reports/terraform-risk-v1-metrics.json'
+  push:
+    branches: [main, testing]
+    paths:
+      - '.github/workflows/terramind-ml-validation.yml'
+      - 'data/processed/terraform-risk-v1.csv'
+      - 'data/manifests/terraform-risk-v1.json'
+      - 'services/analyzer-api/**'
+      - 'models/terraform-risk-v1.json'
+      - 'reports/terraform-risk-v1-metrics.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train-and-test:
+    name: Rebuild dataset and evaluate model
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout TerraMind
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install analyzer and ML dependencies
+        run: python -m pip install -e 'services/analyzer-api[dev]'
+
+      - name: Checkout pinned benchmark source
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/mchittineni/iacsecbench.git .build/iacsecbench
+          git -C .build/iacsecbench checkout --detach 6e359ac29dcde1974d792f454e1a48dfd9deeaa6
+
+      - name: Rebuild and verify derived dataset
+        run: |
+          python -m terramind_ml.dataset --source ../../.build/iacsecbench --output ../../.build/terraform-risk-v1.csv
+          cmp data/processed/terraform-risk-v1.csv .build/terraform-risk-v1.csv
+        working-directory: services/analyzer-api
+
+      - name: Run analyzer and ML tests
+        run: python -m pytest -q
+        working-directory: services/analyzer-api
+
+      - name: Train and evaluate grouped model
+        run: |
+          python -m terramind_ml.train \
+            --dataset ../../.build/terraform-risk-v1.csv \
+            --model-output ../../.build/training-output/terraform-risk-v1.json \
+            --metrics-output ../../.build/training-output/terraform-risk-v1-metrics.json
+        working-directory: services/analyzer-api
+
+      - name: Upload model and evaluation report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: terramind-risk-model-${{ github.sha }}
+          path: .build/training-output/
+          if-no-files-found: error
+          retention-days: 14

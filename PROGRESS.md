@@ -4,21 +4,21 @@ This file records real work, decisions, tests, and blockers and is included in t
 
 ## Status snapshot
 
-**Current phase:** M1/M3 - Expanded static analyzer and experimental ML baseline (tool integrations and model validation remain)
+**Current phase:** M1/M3/M6 - Analyzer and model quality work, plus Windows/Linux alpha packaging pipeline (CI artifacts still need a successful hosted run)
 
-**Next build targets:** verify fresh GitHub Actions runs after the runner-script and CodeQL fixes; resolve only actionable code/config failures. GitHub billing and Microsoft-only self-hosted runner availability need repository-owner/platform action. Then verify the branded Code-OSS build/launch and add workspace-root authorization plus Terraform/TFLint/Checkov safely.
+**Next build targets:** run the new model reproducibility and Windows/Linux packaging workflows on `testing`; fix actionable failures; verify the packaged editor and then wire in a bundled analyzer service. Expand analyzer integrations (workspace authorization, Terraform/TFLint/Checkov) before treating packages as end-user ready. Do not merge to `main` until the PR's required checks pass; macOS billing and Microsoft-only runner configuration remain external blockers for upstream CI.
 
 **Overall estimate:** roughly 35–40% of the agreed MVP scope is implemented, based on the milestones below—not a schedule forecast. The analyzer/model foundation exists, while Terraform tool integrations, complete workbench UX, generation/repair, and desktop packaging/build verification remain major unfinished work.
 
 | Milestone | Status | Evidence / remaining work |
 | --- | --- | --- |
-| M0 - Fork foundation | Partial | TerraMind identity and bundled contribution exist; full Code-OSS build/launch and packaging are unverified. |
+| M0 - Fork foundation | Partial | TerraMind identity and bundled contribution exist; Windows/Linux preview package workflows are configured, but no successful package output or launch is verified. |
 | M1 - Deterministic analyzer | Partial | HCL parsing, AWS heuristic rules, API tests, and Problems diagnostics; Terraform validate/TFLint/Checkov and workspace authorization remain. |
 | M2 - Dataset pipeline | Partial | Reproducible, pinned 46-row AWS derived dataset; broader independently sourced/human-reviewed corpus remains. |
-| M3 - ML baseline | Partial | Grouped OOF logistic baseline and portable inference; uncalibrated, tiny sample, no external holdout. |
+| M3 - ML baseline | Partial | Grouped OOF logistic baseline, pair-group bootstrap intervals, and portable inference; tiny sample, no external holdout. |
 | M4 - Native workbench UX | Partial | Analyze command and initial activity-bar/Problems integration; full analysis panel, ratings, and generation dialog remain. |
 | M5 - Local AI workflow | Not started | Ollama generation, grounded explanations, repair diff/preview, and approval flow are absent. |
-| M6 - Demo hardening | Partial | API fixtures/tests and reproducible model evaluation exist; clean desktop demo, screenshots, and packaging remain. |
+| M6 - Demo hardening | Partial | API fixtures/tests and reproducible model evaluation exist; clean desktop demo, screenshots, package execution, and bundled analyzer lifecycle remain. |
 
 ## Log
 
@@ -229,5 +229,22 @@ This file records real work, decisions, tests, and blockers and is included in t
 - Latest Code-OSS run also has external execution blockers: macOS jobs report account billing/spending-limit failure, and Microsoft-specific self-hosted runner jobs remain queued. These are not source-code failures and need GitHub billing/runner configuration; no successful full matrix is claimed.
 - Pushed the workflow and documentation fixes to `main` as `23d77fc9` and merged that commit into all five open Dependabot branches to trigger fresh checks.
 - Local verification passed: all three edited workflow YAML files parse, `services/analyzer-api` has 11 passing tests, the TerraMind extension compiles with 0 TypeScript errors, and `git diff --check` is clean.
-- GitHub confirms the new PR checks were created; the Linux Electron-Unit job is waiting for a hosted runner, and the wider checks are queued/in progress. The prior concrete `apt-retry.sh: Permission denied` failure is addressed in the workflow, but its rerun has not executed that step yet. Do not mark remote CI green until the jobs complete.
+- Initial status on the fresh PR run was queued; follow-up inspection after sign-in confirmed Linux Electron-Unit passed `Setup system services` (including the repaired apt helper) and progressed into dependencies/transpilation. The full test job was still running at last check. macOS remains blocked by account billing, and Microsoft-only self-hosted checks remain unavailable; remote CI is not fully green.
 - The complete Code-OSS desktop build/launch is still unverified; earlier local Windows build attempts were blocked by missing Spectre C++ libraries and incomplete Electron/native dependencies.
+
+### 2026-09-29 - Add uncertainty-aware model evaluation and preview build workflows
+
+**Implemented on `testing` (not yet merged)**
+
+- Added reproducible 95% percentile intervals for balanced accuracy and PR-AUC by resampling complete control-pair groups over fixed grouped out-of-fold predictions (2,000 seeded resamples). The report explicitly limits interpretation to the 23 benchmark control pairs.
+- Regenerated the tracked model and metrics from the 46-row dataset. Point estimates remain balanced accuracy 0.674 and PR-AUC 0.764; grouped-bootstrap intervals are 0.587–0.783 and 0.656–0.867 respectively. This does not add independent training data or establish generalization.
+- Added a GitHub Actions workflow that rechecks the pinned benchmark-derived CSV, runs API/ML tests, retrains the model, and uploads the model/report as a short-lived artifact.
+- Added a Windows x64 and Linux x64 Code-OSS preview packaging workflow. Commits to `testing` create downloadable Actions artifacts; a `terramind-v*` tag can produce a **draft** private GitHub release only after both platform builds succeed.
+- Kept upstream source intact. No optional features were removed without package-size/dependency evidence; the workflows target downloadable alpha builds, not a production installer.
+
+**Validation and remaining work**
+
+- The benchmark extractor reproduced the committed CSV byte-for-byte from IaCSecBench commit `6e359ac29dcde1974d792f454e1a48dfd9deeaa6`.
+- The analyzer/ML suite passes 11 tests; fresh training completed with the expected point estimates and produced the new pair-group intervals.
+- GitHub workflow execution and desktop package outputs are pending. The app still requires manually starting the analyzer service; packaging the service lifecycle is a prerequisite for a useful end-user download.
+- No main-branch merge is claimed. The feature branch must pass its ML and package workflows and applicable PR checks first.

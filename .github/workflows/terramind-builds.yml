@@ -1,0 +1,123 @@
+name: TerraMind Windows and Linux builds
+
+on:
+  push:
+    branches: [testing]
+    tags: ['terramind-v*']
+    paths:
+      - '.github/workflows/terramind-builds.yml'
+      - 'product.json'
+      - 'extensions/**'
+      - 'src/**'
+      - 'build/**'
+      - 'resources/**'
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/terramind-builds.yml'
+      - 'product.json'
+      - 'extensions/terramind-core/**'
+      - 'src/vs/workbench/contrib/terramind/**'
+      - 'build/**'
+      - 'resources/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-x64
+            label: Linux x64
+          - os: windows-2022
+            target: win32-x64
+            label: Windows x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - name: Checkout TerraMind source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libnotify-bin libkrb5-dev
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download product built-in extensions
+        run: node build/lib/builtInExtensions.ts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build branded desktop application
+        run: npm run gulp -- vscode-${{ matrix.target }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Linux download archive
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test -d VSCode-linux-x64
+          mkdir -p dist
+          tar -czf dist/TerraMind-Linux-x64.tar.gz -C VSCode-linux-x64 .
+
+      - name: Create Windows download archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'VSCode-win32-x64')) { throw 'Windows package output was not created.' }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path 'VSCode-win32-x64\*' -DestinationPath 'dist\TerraMind-Windows-x64.zip'
+
+      - name: Upload downloadable build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: TerraMind-${{ matrix.label }}-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    name: Draft private GitHub release
+    if: startsWith(github.ref, 'refs/tags/terramind-v')
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download platform builds
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: TerraMind-*-${{ github.sha }}
+          path: dist
+          merge-multiple: true
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --draft --title "TerraMind $GITHUB_REF_NAME" --notes "Private alpha builds for Windows x64 and Linux x64. These are preview packages; the analyzer service still requires manual local setup."
