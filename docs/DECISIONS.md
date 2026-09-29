@@ -44,6 +44,6 @@ Use HCL parsing and transparent deterministic rules before invoking provider plu
 
 ## D-008: Train a separate, conservative risk estimator
 
-**Status:** accepted; experimental prototype trained.
+**Status:** accepted; experimental prototype trained and wired to analyzer/UI.
 
 Use a traditional, inspectable classifier over versioned numeric features rather than fine-tuning a foundation model on a tiny corpus. The initial logistic model uses a pinned, MIT-licensed controlled corpus, excludes case identifiers/comments from features, and groups paired variants during cross-validation. Label its output as experimental and uncalibrated; do not equate a benchmark-control violation score with deployment failure, uptime, scalability, or cost.

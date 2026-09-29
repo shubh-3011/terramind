@@ -6,9 +6,11 @@ TerraMind is an experimental, private **Code-OSS fork** for Terraform authors. T
 
 This is an early prototype, not a finished editor or production security product.
 
+**Rough completion estimate: 35–40% of the agreed MVP scope.** The analyzer and experimental ML foundation are underway, but external Terraform tools, full workbench UX, AI generation/repair, and a verified desktop build remain. This is a milestone-coverage estimate, not a schedule or quality claim; see [PROGRESS.md](PROGRESS.md).
+
 - Implemented: TerraMind product identity, bundled activity-bar contribution, Analyze Workspace command, local FastAPI API, HCL syntax parsing, initial SSH/IAM/S3/ECR/EC2/EBS static rules, VS Code Problems diagnostics, and an experimental grouped-evaluation logistic-regression risk estimate.
 - Not implemented: Terraform provider validation, TFLint, Checkov, cost/availability/scalability ratings, prompt-to-Terraform generation, Ollama integration, or repair proposals. The model is trained on only 46 controlled AWS cases and is not suitable for production decisions.
-- Build status: TerraMind contribution compiles. A complete Code-OSS app build and launch are not yet verified because Windows native dependencies are incomplete.
+- Validation status: analyzer/ML suite passes 11 tests; the TerraMind extension compiles with 0 TypeScript errors; the npm workspace cache-key check passes. A complete Code-OSS app build and launch are not verified. GitHub Actions fixes have been pushed, but their new PR runs still need verification.
 
 See [PLAN.md](PLAN.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [PROGRESS.md](PROGRESS.md) for the roadmap, design contracts, and verified progress.
 
@@ -23,7 +25,7 @@ python -m pip install -e ".[dev]"
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Keep this prototype bound to loopback. In the editor, open a Terraform workspace and run **TerraMind: Analyze Workspace**. The analyzer parses `.tf` files and currently reports public SSH ingress and literal wildcard IAM actions. It does not run `terraform init`, providers, `terraform validate`, TFLint, or Checkov. The report marks those checks as not run.
+Keep this prototype bound to loopback. In the editor, open a Terraform workspace and run **TerraMind: Analyze Workspace**. The analyzer reports HCL parse failures; public SSH ingress (including dynamic blocks backed by resolvable literal locals); unresolved dynamic ingress for review; wildcard IAM actions/resources; S3 public-access and ACL risks; mutable ECR tags; optional IMDSv2; and explicit EBS encryption disablement. These are static heuristics. It does not run `terraform init`, providers, `terraform validate`, TFLint, or Checkov; the report marks those checks as not run.
 
 To run the analyzer API tests:
 
