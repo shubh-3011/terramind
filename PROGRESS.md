@@ -186,3 +186,16 @@ This file records real work, decisions, tests, and blockers and is included in t
 **Still incomplete**
 
 - Full Code-OSS desktop build and launch are unverified due native Windows build prerequisites. The model remains small, uncalibrated, and benchmark-control scoped; more independently labeled data and external validation are required.
+
+### 2026-09-29 - Repair private-repository pull request checks
+
+**Implemented**
+
+- Added the missing `extensions/terramind-core/package-lock.json`, required by the repository's npm workspace cache-key generator after TerraMind was added to the npm workspace list.
+- Granted read-only `contents` permission to the Monaco and telemetry workflows so their checkout steps can read this private repository.
+- Skipped CodeQL upload for Dependabot PR events because Dependabot's workflow token is read-only; CodeQL remains enabled for regular PRs, main-branch pushes, and scheduled scans.
+
+**Validation**
+
+- `node build/azure-pipelines/common/computeNodeModulesCacheKey.ts compile x64` succeeds with the new extension lockfile.
+- PR checks must be rerun by GitHub after these changes reach the base branch; CI resolution is not claimed until those runs complete.
