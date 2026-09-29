@@ -284,6 +284,7 @@ def test_generate_can_opt_into_cached_provider_validation(tmp_path):
             "description": "Create a private S3 bucket",
             "workspace_path": str(tmp_path),
             "run_external_tools": True,
+            "workspace_trusted": True,
         })
 
     assert response.status_code == 200
@@ -292,6 +293,39 @@ def test_generate_can_opt_into_cached_provider_validation(tmp_path):
     assert any(finding["rule_id"] == "TF-VALIDATE" for finding in generated["findings"])
     validate.assert_called_once()
     assert validate.call_args.args[1] == str(tmp_path)
+
+
+def test_generate_skips_provider_plugins_for_untrusted_workspace(tmp_path):
+    class OllamaResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps({
+                "model": "test-model",
+                "response": 'resource "aws_s3_bucket" "example" {}',
+            }).encode("utf-8")
+
+    class OllamaOpener:
+        def open(self, *_args, **_kwargs):
+            return OllamaResponse()
+
+    with patch("app.main.urllib.request.build_opener", return_value=OllamaOpener()), patch(
+        "app.generated_validator.run_generated_terraform_validation",
+        side_effect=AssertionError("provider plugins must not run in Restricted Mode"),
+    ):
+        response = client.post("/v1/generate", json={
+            "description": "Create a private S3 bucket",
+            "workspace_path": str(tmp_path),
+            "run_external_tools": True,
+            "workspace_trusted": False,
+        })
+
+    assert response.status_code == 200
+    assert response.json()["checks"]["terraform_validate"] == "not_run: workspace is untrusted (Restricted Mode)"
 
 
 def test_generate_rejects_unparseable_model_output():
@@ -391,6 +425,7 @@ def test_external_tools_map_json_findings_and_hide_cloud_credentials(tmp_path, m
     ):
         response = client.post("/v1/analyze", json={
             "workspace_path": str(tmp_path), "run_external_tools": True,
+            "workspace_trusted": True,
         })
 
     assert response.status_code == 200
@@ -398,6 +433,21 @@ def test_external_tools_map_json_findings_and_hide_cloud_credentials(tmp_path, m
     assert report["checks"]["tflint"] == "completed: 1 issue(s)"
     assert report["checks"]["checkov"] == "completed: 1 failed check(s)"
     assert {finding["source"] for finding in report["findings"]} == {"tflint", "checkov"}
+
+
+def test_analysis_skips_external_tools_for_untrusted_workspace(tmp_path):
+    with patch(
+        "app.tool_runner.run_static_tools",
+        side_effect=AssertionError("external tools must not run in Restricted Mode"),
+    ):
+        response = client.post("/v1/analyze", json={
+            "workspace_path": str(tmp_path),
+            "run_external_tools": True,
+            "workspace_trusted": False,
+        })
+
+    assert response.status_code == 200
+    assert response.json()["checks"]["terraform_validate"] == "not_run: workspace is untrusted (Restricted Mode)"
 
 
 def test_service_rating_cites_static_evidence_and_does_not_invent_unknown_scores(tmp_path):

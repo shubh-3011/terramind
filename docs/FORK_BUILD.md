@@ -43,7 +43,7 @@ The current MVP is estimated at roughly 65% complete by milestone coverage. Loca
 - TerraMind product identity and internal contribution are present.
 - Analyzer API and built-in Analyze/Generate commands are present: HCL parse, AWS static rules (including in-memory checks on generated drafts), opt-in preinitialized-cache Terraform validation/TFLint/Checkov integration, ML risk estimate, Problems diagnostics, local Ollama/optional Transformers draft preview and explicit save.
 - A compact, grouped-evaluation experimental logistic model is available; it is not a general Terraform code-generation model or production predictor.
-- Analyzer/ML/data/training/evaluation tests pass (34). TerraMind extension compilation passed in an earlier session but could not be rerun in the current checkout because its Code-OSS gulpfile and compiler package are absent.
+- Analyzer/ML/data/training/evaluation tests pass (36); the extension TypeScript project typecheck passes. Full Code-OSS extension packaging cannot run in this checkout because its Gulp file is absent.
 - Full Code-OSS install/build/launch is **not verified**; Windows native build prerequisites and GitHub's upstream-specific self-hosted runners remain outstanding. See the latest build/CI entry in [PROGRESS.md](../PROGRESS.md).
 - A testing-branch workflow targets downloadable Windows x64 ZIP and Linux x64 TAR.GZ preview builds. A `terramind-v*` tag can create a draft private release only after both builds succeed; current hosted jobs are not yet verified. These alpha packages still require the analyzer API and Ollama to be started manually and are not end-user-ready.
 

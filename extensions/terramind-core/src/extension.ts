@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		}, async () => {
 			try {
 				const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
-				const result = await requestAnalysis(workspaceFolder.uri.fsPath, runExternalTools);
+				const result = await requestAnalysis(workspaceFolder.uri.fsPath, runExternalTools, vscode.workspace.isTrusted);
 				diagnostics.clear();
 				const byFile = new Map<string, vscode.Diagnostic[]>();
 				for (const finding of result.findings ?? []) {
@@ -168,6 +168,9 @@ export function activate(context: vscode.ExtensionContext): void {
 				for (const [check, status] of Object.entries(result.checks ?? {})) {
 					output.appendLine(`CHECK ${check}: ${status}`);
 				}
+				if (runExternalTools && !vscode.workspace.isTrusted) {
+					output.appendLine('External tools were skipped because this workspace is in Restricted Mode.');
+				}
 				for (const rating of result.service_ratings ?? []) {
 					for (const [dimension, details] of Object.entries(rating.dimensions)) {
 						output.appendLine(`RATING ${rating.service} ${dimension}: ${details.status}${details.score === null ? '' : ` ${details.score}/100`}; ${details.summary}`);
@@ -219,7 +222,7 @@ export function activate(context: vscode.ExtensionContext): void {
 				location: vscode.ProgressLocation.Notification,
 				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with local Ollama'),
 				cancellable: false
-			}, () => requestGeneration(requirements.trim(), constraints?.trim() ?? '', model, workspaceFolder.uri.fsPath, runExternalTools));
+			}, () => requestGeneration(requirements.trim(), constraints?.trim() ?? '', model, workspaceFolder.uri.fsPath, runExternalTools, vscode.workspace.isTrusted));
 			if (!generated.syntax_valid) {
 				throw new Error('The generated draft did not pass HCL syntax parsing.');
 			}
@@ -288,12 +291,12 @@ export function activate(context: vscode.ExtensionContext): void {
 	}));
 }
 
-async function requestAnalysis(workspacePath: string, runExternalTools: boolean): Promise<AnalysisResult> {
+async function requestAnalysis(workspacePath: string, runExternalTools: boolean, workspaceTrusted: boolean): Promise<AnalysisResult> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
 	const response = await fetch(`${analyzerUrl}/v1/analyze`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ workspace_path: workspacePath, run_external_tools: runExternalTools })
+		body: JSON.stringify({ workspace_path: workspacePath, run_external_tools: runExternalTools, workspace_trusted: workspaceTrusted })
 	});
 	if (!response.ok) {
 		throw new Error(`Analyzer returned HTTP ${response.status}`);
@@ -306,7 +309,8 @@ async function requestGeneration(
 	constraints: string,
 	model: string,
 	workspacePath: string,
-	runExternalTools: boolean
+	runExternalTools: boolean,
+	workspaceTrusted: boolean
 ): Promise<GenerationResult> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
 	const response = await fetch(`${analyzerUrl}/v1/generate`, {
@@ -317,7 +321,8 @@ async function requestGeneration(
 			constraints,
 			model,
 			workspace_path: workspacePath,
-			run_external_tools: runExternalTools
+			run_external_tools: runExternalTools,
+			workspace_trusted: workspaceTrusted
 		})
 	});
 	if (!response.ok) {

@@ -36,6 +36,7 @@ class AnalyzeRequest(BaseModel):
 
     workspace_path: str = Field(min_length=1, max_length=4096)
     run_external_tools: bool = False
+    workspace_trusted: bool = False
 
 
 class GenerateRequest(BaseModel):
@@ -46,6 +47,7 @@ class GenerateRequest(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=100)
     workspace_path: str | None = Field(default=None, max_length=4096)
     run_external_tools: bool = False
+    workspace_trusted: bool = False
 
 
 class Finding(BaseModel):
@@ -152,18 +154,23 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
         risk_prediction = predict_risk(extract_features(parsed_documents, parsed_sources))
         risk_prediction_reason = None if risk_prediction else "No compatible trained risk model is available."
 
-    if request.run_external_tools:
+    if request.run_external_tools and request.workspace_trusted:
         # Import after Finding is defined to keep the scanner adapter's schema dependency acyclic.
         from app.tool_runner import run_static_tools
 
         tool_findings, tool_checks = run_static_tools(workspace)
         findings.extend(tool_findings)
     else:
+        disabled_reason = (
+            "workspace is untrusted (Restricted Mode)"
+            if request.run_external_tools and not request.workspace_trusted
+            else "external tools disabled in TerraMind settings"
+        )
         tool_checks = {
-            "terraform_fmt": "not_run: external tools disabled in TerraMind settings",
-            "terraform_validate": "not_run: external tools disabled in TerraMind settings",
-            "tflint": "not_run: external tools disabled in TerraMind settings",
-            "checkov": "not_run: external tools disabled in TerraMind settings",
+            "terraform_fmt": f"not_run: {disabled_reason}",
+            "terraform_validate": f"not_run: {disabled_reason}",
+            "tflint": f"not_run: {disabled_reason}",
+            "checkov": f"not_run: {disabled_reason}",
         }
 
     from app.ratings import build_service_ratings
@@ -201,7 +208,8 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     if hf_model_path:
         response_model, terraform = _generate_with_transformers(hf_model_path, prompt)
         return _validated_generation_response(
-            response_model, terraform, request.workspace_path, request.run_external_tools,
+            response_model, terraform, request.workspace_path,
+            request.run_external_tools, request.workspace_trusted,
         )
 
     ollama_url = os.environ.get("TERRAMIND_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
@@ -250,7 +258,8 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     if not isinstance(terraform, str) or not terraform.strip():
         raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
     return _validated_generation_response(
-        str(result.get("model", model)), terraform, request.workspace_path, request.run_external_tools,
+        str(result.get("model", model)), terraform, request.workspace_path,
+        request.run_external_tools, request.workspace_trusted,
     )
 
 
@@ -308,6 +317,7 @@ def _validated_generation_response(
     terraform: str,
     workspace_path: str | None = None,
     run_external_tools: bool = False,
+    workspace_trusted: bool = False,
 ) -> GenerateResponse:
     if not isinstance(terraform, str) or not terraform.strip():
         raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
@@ -325,9 +335,13 @@ def _validated_generation_response(
     findings = _static_security_findings(document, terraform, "main.tf")
     checks = {
         "hcl_parse": "passed",
-        "terraform_validate": "not_run: external tools disabled",
+        "terraform_validate": (
+            "not_run: workspace is untrusted (Restricted Mode)"
+            if run_external_tools and not workspace_trusted
+            else "not_run: external tools disabled"
+        ),
     }
-    if run_external_tools:
+    if run_external_tools and workspace_trusted:
         from app.generated_validator import run_generated_terraform_validation
 
         checks["terraform_validate"], terraform_findings = run_generated_terraform_validation(
