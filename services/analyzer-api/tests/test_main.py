@@ -11,13 +11,13 @@ client = TestClient(app)
 
 def test_transformers_generation_token_limit_is_bounded_and_configurable():
     with patch.dict("os.environ", {}, clear=True):
-        assert _transformers_max_new_tokens() == 384
+        assert _transformers_max_new_tokens() == 2048
     with patch.dict("os.environ", {"TERRAMIND_HF_MAX_NEW_TOKENS": "4096"}):
         assert _transformers_max_new_tokens() == 2048
     with patch.dict("os.environ", {"TERRAMIND_HF_MAX_NEW_TOKENS": "8"}):
         assert _transformers_max_new_tokens() == 128
     with patch.dict("os.environ", {"TERRAMIND_HF_MAX_NEW_TOKENS": "invalid"}):
-        assert _transformers_max_new_tokens() == 384
+        assert _transformers_max_new_tokens() == 2048
 
 
 def test_analyze_parses_hcl_and_reports_public_ssh(tmp_path):
