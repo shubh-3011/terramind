@@ -290,14 +290,14 @@ This file records real work, decisions, tests, and blockers and is included in t
 
 **Validation performed**
 
-- Analyzer, model, generation-route, scanner-adapter, and SFT-data tests: 19 passed.
+- Analyzer, model, generation-route, scanner-adapter, and SFT-data tests: 22 passed in the final focused suite.
 - `npm run gulp -- compile-extension:terramind-core`: 0 TypeScript errors.
 - SFT filtering tests cover AWS-only selection, permissive-license allowlist, HCL parse, repository split leakage, and attribution metadata.
-- Live Ollama inference is not verified: Ollama CLI exists but no local model/server is running. Installed system Python is CPU-only despite an RTX 4060 8 GB GPU; no generative fine-tuning run or adapter is claimed.
-- Latest Windows/Linux Actions package jobs remain in progress at last inspection; no desktop artifact is yet verified. Main branch has not been updated.
+- A real local Ollama inference returned HCL accepted by the HCL parser; this does not establish Terraform provider correctness. Installed system Python is CPU-only despite an RTX 4060 8 GB GPU; no generative fine-tuning run or adapter is claimed.
+- Windows/Linux Actions package jobs are failing or queued at latest inspection; no desktop artifact is verified. Main branch has not been updated.
 
 **Current estimate and remaining blockers**
 
-- Updated scope coverage estimate: 55–60%, not yet the requested 65–70%. This is a milestone-coverage estimate, not a quality or schedule claim.
-- To reach a credible 65–70% milestone, next add evidence-backed rating output (especially explicit insufficient-information states for cost/reliability/scalability), make the local model run end-to-end, and verify the desktop build/package path. A real fine-tuned generator needs a compatible CUDA training stack, training time, and an evaluation set separate from the training corpus.
+- Updated scope coverage estimate: 60–65%, not yet the requested 65–70%. This is a milestone-coverage estimate, not a quality or schedule claim.
+- To reach a credible 65–70% milestone, next verify the desktop build/package path and resolve hosted checks; then train or validate a small license-compatible generator adapter. Cost/reliability/scalability remain explicit unknowns where evidence is missing. A fine-tuned generator needs a compatible CUDA training stack, training time, and an evaluation set separate from the training corpus.
 - Six PRs were open at the start of this work: TerraMind #6 and five Dependabot updates. Do not merge any until relevant checks are green; existing GitHub runner/billing limitations may prevent clearing every inherited Code-OSS matrix check.
