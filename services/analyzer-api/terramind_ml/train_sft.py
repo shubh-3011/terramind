@@ -277,7 +277,11 @@ def main() -> int:
         target_modules=target_modules,
         task_type="CAUSAL_LM",
     ))
+    # Explicitly place the model on the GPU. Relying on the Trainer to move it can
+    # silently leave a PEFT model on CPU, which turns a ~1 s/step run into ~25 s/step.
+    model = model.to("cuda")
     model.print_trainable_parameters()
+    print(f"Training device: {next(model.parameters()).device}")
 
     class PaddedDataset(torch.utils.data.Dataset):
         def __init__(self, rows: list[dict[str, list[int]]]):
@@ -328,6 +332,9 @@ def main() -> int:
         data_seed=args.seed,
         remove_unused_columns=False,
         dataloader_num_workers=0,
+        use_cpu=False,
+        dataloader_pin_memory=True,
+        tf32=True,
     )
     trainer = Trainer(
         model=model,
