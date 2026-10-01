@@ -26,7 +26,7 @@ The built-in **Propose Terraform Repair** command sends only the active local `.
 | Command palette/context menu | Analyze current workspace, generate infrastructure, explain a finding, generate a repair, re-test. |
 | Terraform diagnostics | Display tool findings and compatibility errors inline at relevant `.tf` locations. |
 | TerraMind analysis panel | Show tool status, overall ML risk, service ratings, evidence, and actions. |
-| Generate Infrastructure dialog | Collect free-text intent and constraints; structured region/resource/workload fields remain planned. |
+| Generate Infrastructure dialog | A guided webview form collects region, repeatable resource/count inventory rows, connected-topology text, and constraints, then previews the generated draft. |
 | Draft preview | Show generated HCL, static AWS findings, evidence-limited service ratings, and optional cached-provider validation findings before the user chooses an in-workspace path. |
 
 ## Rating contract
@@ -48,6 +48,8 @@ Every service/project rating returned by the backend must include source and con
 ```
 
 Use `status: "insufficient_information"` rather than fabricating a rating when Terraform and stated assumptions cannot support it.
+
+As of `aws-rubric-v2`, `security`, `reliability`, and `maintainability` are scored from observable evidence; each scored dimension also carries `evidence` (structural facts such as `aws_db_instance.primary: multi_az=false`), `evidence_finding_ids`, `assumptions`, and `limitations`. `scalability` and `cost` deliberately remain `insufficient_information` because they require external workload and pricing data. Reliability is scored only when resources expose relevant resilience attributes; maintainability is scored only when structural signals (tags, variable references, modules, pinned providers) are observable.
 
 ## Analysis job lifecycle
 
@@ -81,7 +83,7 @@ Current synchronous response:
 }
 ```
 
-The current implementation uses `python-hcl2` to parse `.tf` files and deterministic rules: `TM-NET-001` public SSH ingress (including supported literal dynamic ingress); `TM-NET-003` unresolved dynamic ingress for manual review; `TM-IAM-001/002` wildcard actions/resources; `TM-S3-001/002` disabled S3 public-access protections/public ACLs; `TM-ECR-001` mutable image tags; `TM-EC2-001` optional IMDSv2 tokens; and `TM-EBS-001` explicit disabled EBS encryption. `TM-HCL-001` is a parser error. Optional external tools are off by default and require `run_external_tools=true`; TerraMind never initializes a workspace or runs plan/apply. `terraform validate` runs only when an existing provider installation is found and can execute those installed plugins, so the user must trust the workspace before opting in. Tool output is bounded and child processes receive no cloud credentials. File discovery excludes `.terraform`, `.git`, and `node_modules`, skips external symlink targets, and enforces file-count/size limits.
+The current implementation uses `python-hcl2` to parse `.tf` files and an extensible deterministic registry under `app/rules/` (45 rules as of 2026-10-01) grouped by domain: networking (`TM-NET-*`), IAM/KMS (`TM-IAM-*`), S3/EBS/EFS storage (`TM-STOR-*`), databases (`TM-DB-*`), compute (`TM-COMPUTE-*`), observability (`TM-OBS-*`), and secrets hygiene (`TM-SECRET-*`), plus the original inline checks (`TM-HCL-001` parser error, `TM-NET-001` public SSH, `TM-NET-003` unresolved dynamic ingress, `TM-IAM-001/002`, `TM-S3-001/002`, `TM-ECR-001`, `TM-EC2-001`, `TM-EBS-001`). Each rule is a pure function over the parsed document and carries severity, service, dimension, and remediation metadata; a failing rule is isolated and skipped. `/v1/analyze` and `/v1/generate` additionally return a severity-ranked recommendation list grouped by rule. Optional external tools are off by default and require `run_external_tools=true`; TerraMind never initializes a workspace or runs plan/apply. `terraform validate` runs only when an existing provider installation is found and can execute those installed plugins, so the user must trust the workspace before opting in. Tool output is bounded and child processes receive no cloud credentials. File discovery excludes `.terraform`, `.git`, and `node_modules`, skips external symlink targets, and enforces file-count/size limits.
 
 When a compatible model artifact exists and every Terraform file parses, the API returns a separate experimental estimate trained on a small, generated AWS control corpus. The estimate is uncalibrated, reports the training sample count, and may be absent when a file failed parsing or the artifact is missing. It predicts benchmark-control violation labels only—not cloud runtime outcomes.
 
