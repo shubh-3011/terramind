@@ -25,12 +25,16 @@ from pydantic import BaseModel, Field
 from terramind_ml.features import expand_dynamic_ingress, extract_features
 from terramind_ml.predictor import predict_risk
 
+from app.llama_cpp_backend import generate_with_gguf
 from app.recommendations import build_recommendations
 from app.workspace_guard import allowed_roots, resolve_workspace
 
 app = FastAPI(title="TerraMind Analyzer", version="0.1.0")
 _TRANSFORMERS_GENERATION_LOCK = threading.Lock()
 MAX_GENERATION_REPAIRS = 1
+
+GenerationEngine = Literal["auto", "ollama", "transformers", "gguf"]
+_VALID_GENERATION_ENGINES = frozenset({"auto", "ollama", "transformers", "gguf"})
 
 MAX_TERRAFORM_FILES = 500
 MAX_FILE_BYTES = 1_000_000
@@ -72,6 +76,7 @@ class GenerateRequest(BaseModel):
     connectivity: str = Field(default="", max_length=4_000)
     constraints: str = Field(default="", max_length=10_000)
     model: str | None = Field(default=None, min_length=1, max_length=100)
+    engine: GenerationEngine | None = Field(default=None)
     workspace_path: str | None = Field(default=None, max_length=4096)
     run_external_tools: bool = False
     workspace_trusted: bool = False
@@ -84,6 +89,7 @@ class RepairRequest(BaseModel):
     findings: list[str] = Field(default_factory=list, max_length=50)
     instructions: str = Field(default="", max_length=4_000)
     model: str | None = Field(default=None, min_length=1, max_length=100)
+    engine: GenerationEngine | None = Field(default=None)
     workspace_path: str | None = Field(default=None, max_length=4096)
     run_external_tools: bool = False
     workspace_trusted: bool = False
@@ -246,7 +252,7 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
         f"Requested connections and traffic flow:\n{request.connectivity or 'No explicit topology supplied; state assumptions in HCL comments.'}\n\n"
         f"Other constraints:\n{request.constraints or 'No extra constraints supplied.'}\n"
     )
-    generator = _configured_generator(model)
+    generator = _configured_generator(model, request.engine)
 
     current_prompt = prompt
     initial_feedback: str | None = None
@@ -307,16 +313,60 @@ def propose_terraform_repair(request: RepairRequest) -> GenerateResponse:
         "and do not add credentials, deployment commands, or claims of validation.\n\n"
         f"<untrusted_repair_data>\n{json.dumps({'terraform': request.terraform[:100_000], 'findings': diagnostics, 'instructions': request.instructions[:4_000]}, ensure_ascii=False)}\n</untrusted_repair_data>\n"
     )
-    response_model, terraform = _configured_generator(model)(prompt)
+    response_model, terraform = _configured_generator(model, request.engine)(prompt)
     return _validated_generation_response(
         response_model, terraform, request.workspace_path,
         request.run_external_tools, request.workspace_trusted,
     )
 
 
-def _configured_generator(model: str) -> Callable[[str], tuple[str, str]]:
+def _resolve_engine(
+    request_engine: str | None,
+    use_gguf_available: bool,
+    use_hf_available: bool,
+    configured_engine: str | None = None,
+) -> str:
+    """Resolve the generation engine as a pure function of its inputs.
+
+    Precedence: an explicit per-request ``engine`` wins; otherwise the
+    ``TERRAMIND_GENERATION_ENGINE`` env value (default ``auto``) is used. For
+    ``auto``, GGUF wins when a GGUF model is configured, then Transformers when
+    an HF model path is configured, and finally Ollama.
+    """
+    requested = (request_engine or configured_engine or "auto").strip().lower()
+    if requested not in _VALID_GENERATION_ENGINES:
+        requested = "auto"
+    if requested == "auto":
+        if use_gguf_available:
+            return "gguf"
+        if use_hf_available:
+            return "transformers"
+        return "ollama"
+    return requested
+
+
+def _configured_generator(
+    model: str, engine: str | None = None,
+) -> Callable[[str], tuple[str, str]]:
+    gguf_model_path = os.environ.get("TERRAMIND_GGUF_MODEL", "").strip()
     hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
-    if hf_model_path:
+    resolved_engine = _resolve_engine(
+        engine, bool(gguf_model_path), bool(hf_model_path),
+        os.environ.get("TERRAMIND_GENERATION_ENGINE", "auto"),
+    )
+    if resolved_engine == "gguf":
+        if not gguf_model_path:
+            raise HTTPException(
+                status_code=503,
+                detail="GGUF engine selected but TERRAMIND_GGUF_MODEL is not set. Point it at a local .gguf file or choose another engine.",
+            )
+        return lambda prompt: generate_with_gguf(gguf_model_path, prompt)
+    if resolved_engine == "transformers":
+        if not hf_model_path:
+            raise HTTPException(
+                status_code=503,
+                detail="Transformers engine selected but TERRAMIND_HF_MODEL_PATH is not set. Point it at a local model directory or choose another engine.",
+            )
         return lambda prompt: _generate_with_transformers(hf_model_path, prompt)
     ollama_url = os.environ.get("TERRAMIND_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     _validate_ollama_url(ollama_url)
