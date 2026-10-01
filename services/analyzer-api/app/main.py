@@ -326,6 +326,45 @@ def propose_terraform_repair(request: RepairRequest) -> GenerateResponse:
     )
 
 
+def _gguf_search_dirs() -> list[Path]:
+    """Directories searched for a bundled GGUF model, in priority order."""
+    directories: list[Path] = []
+    configured = os.environ.get("TERRAMIND_MODELS_DIR", "").strip()
+    if configured:
+        directories.append(Path(configured).expanduser())
+    here = Path(__file__).resolve()
+    # services/analyzer-api/app/main.py -> analyzer-api, services, repository root
+    analyzer_dir = here.parent.parent
+    repository_root = analyzer_dir.parent.parent
+    directories.append(analyzer_dir / "models")
+    directories.append(repository_root / "models")
+    directories.append(Path.home() / ".terramind" / "models")
+    return directories
+
+
+def _discover_gguf_model() -> str | None:
+    """Find the bundled Terraform GGUF so it works with no configuration at all.
+
+    An explicit ``TERRAMIND_GGUF_MODEL`` always wins. Otherwise TerraMind looks in
+    conventional model directories (``TERRAMIND_MODELS_DIR``, then ``models/`` next to
+    the analyzer, the repository ``models/``, and ``~/.terramind/models``). This is
+    what makes the model "built in": drop the ``.gguf`` in one of those folders and
+    generation works without Ollama and without environment variables.
+    """
+    explicit = os.environ.get("TERRAMIND_GGUF_MODEL", "").strip()
+    if explicit:
+        return explicit
+    for directory in _gguf_search_dirs():
+        try:
+            if directory.is_dir():
+                candidates = sorted(directory.glob("*.gguf"))
+                if candidates:
+                    return str(candidates[0])
+        except OSError:
+            continue
+    return None
+
+
 def _resolve_engine(
     request_engine: str | None,
     use_gguf_available: bool,
@@ -354,7 +393,7 @@ def _resolve_engine(
 def _configured_generator(
     model: str, engine: str | None = None,
 ) -> Callable[[str], tuple[str, str]]:
-    gguf_model_path = os.environ.get("TERRAMIND_GGUF_MODEL", "").strip()
+    gguf_model_path = _discover_gguf_model() or ""
     hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
     resolved_engine = _resolve_engine(
         engine, bool(gguf_model_path), bool(hf_model_path),
@@ -364,7 +403,7 @@ def _configured_generator(
         if not gguf_model_path:
             raise HTTPException(
                 status_code=503,
-                detail="GGUF engine selected but TERRAMIND_GGUF_MODEL is not set. Point it at a local .gguf file or choose another engine.",
+                detail="GGUF engine selected but no GGUF model was found. Set TERRAMIND_GGUF_MODEL, set TERRAMIND_MODELS_DIR, or place a .gguf in the analyzer's models/ directory.",
             )
         return lambda prompt: generate_with_gguf(gguf_model_path, prompt)
     if resolved_engine == "transformers":
