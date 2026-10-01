@@ -18,7 +18,9 @@
 		"onCommand:terramind.generateInfrastructureWizard",
 		"onCommand:terramind.proposeRepair",
 		"onCommand:terramind.openDashboard",
-		"onCommand:terramind.openReport"
+		"onCommand:terramind.openReport",
+		"onCommand:terramind.checkAnalyzer",
+		"onCommand:terramind.analyzeDemo"
 	],
 	"main": "./out/extension",
 	"browser": "./dist/browser/extension",
@@ -59,6 +61,16 @@
 			{
 				"command": "terramind.openReport",
 				"title": "%command.openReport%",
+				"category": "TerraMind"
+			},
+			{
+				"command": "terramind.checkAnalyzer",
+				"title": "%command.checkAnalyzer%",
+				"category": "TerraMind"
+			},
+			{
+				"command": "terramind.analyzeDemo",
+				"title": "%command.analyzeDemo%",
 				"category": "TerraMind"
 			}
 		],
@@ -101,6 +113,11 @@
 					"type": "string",
 					"default": "http://127.0.0.1:8000",
 					"description": "%configuration.analyzerUrl%"
+				},
+				"terramind.demoWorkspacePath": {
+					"type": "string",
+					"default": "C:\\Users\\shubh\\Downloads\\terramind\\services\\analyzer-api\\tests\\fixtures\\insecure",
+					"description": "%configuration.demoWorkspacePath%"
 				},
 				"terramind.generationModel": {
 					"type": "string",

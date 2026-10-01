@@ -88,6 +88,11 @@ class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeI
 	private ratingItems: readonly { readonly label: string; readonly description: string }[] = [];
 	private recommendationItems: readonly { readonly label: string; readonly description: string }[] = [];
 
+	setAnalyzerStatus(status: string): void {
+		this.analyzerStatus = status;
+		this._onDidChangeTreeData.fire();
+	}
+
 	refresh(
 		analyzerStatus: string,
 		workspaceStatus: string,
@@ -145,6 +150,68 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.openDashboard', async () => {
 		await vscode.commands.executeCommand('workbench.view.extension.terramind');
+	}));
+
+	// Health check so the dashboard does not sit on "Analyzer Not Checked".
+	const checkAnalyzer = async (notify: boolean): Promise<void> => {
+		const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
+		try {
+			const response = await fetch(`${analyzerUrl}/health`);
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			dashboard.setAnalyzerStatus(vscode.l10n.t('Connected'));
+			output.appendLine(`Analyzer health: ok (${analyzerUrl})`);
+			if (notify) {
+				await vscode.window.showInformationMessage(vscode.l10n.t('TerraMind analyzer is reachable at {0}.', analyzerUrl));
+			}
+		} catch (error) {
+			dashboard.setAnalyzerStatus(vscode.l10n.t('Unavailable'));
+			output.appendLine(`Analyzer health check failed: ${getErrorMessage(error)}`);
+			if (notify) {
+				await vscode.window.showWarningMessage(vscode.l10n.t('TerraMind analyzer is not reachable. Start the analyzer service and try again.'));
+			}
+		}
+	};
+	context.subscriptions.push(vscode.commands.registerCommand('terramind.checkAnalyzer', () => checkAnalyzer(true)));
+	void checkAnalyzer(false);
+
+	// Analyze a local fixture folder server-side. Unlike Analyze Workspace this needs
+	// no browser folder picker, so it works in every browser (e.g. Brave).
+	context.subscriptions.push(vscode.commands.registerCommand('terramind.analyzeDemo', async () => {
+		const demoPath = vscode.workspace.getConfiguration('terramind').get<string>('demoWorkspacePath', '').trim();
+		if (!demoPath) {
+			await vscode.window.showErrorMessage(vscode.l10n.t('Set "terramind.demoWorkspacePath" to a local Terraform folder first.'));
+			return;
+		}
+		try {
+			const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
+			const result = await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: vscode.l10n.t('TerraMind: Analyzing {0}', demoPath),
+				cancellable: false
+			}, () => requestAnalysis(demoPath, runExternalTools, false));
+			lastReport = { workspaceName: demoPath, report: result };
+			showReport(context, demoPath, result);
+			const ratingItems = (result.service_ratings ?? []).map(rating => ({ label: `${rating.service} (${rating.resource_count})`, description: '' }));
+			const recommendationItems = (result.recommendations ?? []).slice(0, 8).map(rec => ({ label: `#${rec.priority} ${rec.rule_id}`, description: rec.title || rec.message }));
+			dashboard.refresh(
+				vscode.l10n.t('Connected'),
+				vscode.l10n.t('{0} files · {1} findings', result.terraform_file_count, result.findings.length),
+				vscode.l10n.t('Demo fixture'),
+				ratingItems,
+				recommendationItems
+			);
+			for (const finding of result.findings) {
+				output.appendLine(`${finding.severity.toUpperCase()} ${finding.rule_id} ${finding.file}${finding.line ? `:${finding.line}` : ''}: ${finding.message}`);
+			}
+			output.show(true);
+			await vscode.window.showInformationMessage(vscode.l10n.t('TerraMind demo analysis: {0} finding(s) across {1} file(s). Open the Report for details.', result.findings.length, result.terraform_file_count));
+		} catch (error) {
+			output.appendLine(`Demo analysis failed: ${getErrorMessage(error)}`);
+			output.show(true);
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not analyze the demo folder. Confirm the analyzer is running.'));
+		}
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.openReport', () => {
