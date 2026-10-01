@@ -576,6 +576,16 @@ def _validated_generation_response(
             detail=f"The model response is not parseable HCL; nothing was written: {_parse_error_message(error)}",
         ) from error
 
+    # Deterministically declare any `var.*` the model referenced but never declared.
+    # "Reference to undeclared input" is the single most common provider-validation
+    # failure, and declaring the variable is safe, mechanical, and reversible.
+    terraform, auto_declared = _declare_missing_variables(terraform, document)
+    if auto_declared:
+        try:
+            document = hcl2.loads(terraform)
+        except Exception:  # noqa: BLE001 - keep the previous parse if reparse fails
+            pass
+
     findings = _static_security_findings(document, terraform, "main.tf")
     checks = {
         "hcl_parse": "passed",
@@ -585,6 +595,8 @@ def _validated_generation_response(
             else "not_run: external tools disabled"
         ),
     }
+    if auto_declared:
+        checks["auto_declared_variables"] = ", ".join(auto_declared)
     if run_external_tools and workspace_trusted:
         from app.generated_validator import run_generated_terraform_validation
 
@@ -617,6 +629,39 @@ def _strip_hcl_fence(source: str) -> str:
     """Remove one outer Markdown fence without changing the HCL body."""
     match = re.fullmatch(r"```(?:hcl|terraform)?\s*\n([\s\S]*?)\n```", source, re.IGNORECASE)
     return match.group(1) if match else source
+
+
+_VAR_REFERENCE = re.compile(r"\bvar\.([A-Za-z_][A-Za-z0-9_-]*)")
+
+
+def _declare_missing_variables(terraform: str, document: dict[str, Any]) -> tuple[str, list[str]]:
+    """Append `variable` blocks for every `var.*` reference the draft never declared.
+
+    Generated drafts frequently use `var.name` without a matching `variable` block,
+    which fails `terraform validate` with "Reference to undeclared input". Declaring
+    the missing variable is mechanical and keeps the model's intent; a reviewer can
+    tighten the type and value. Returns the (possibly unchanged) source and the list
+    of names that were auto-declared.
+    """
+    declared: set[str] = set()
+    blocks = document.get("variable", [])
+    if isinstance(blocks, dict):
+        blocks = [blocks]
+    for block in blocks if isinstance(blocks, list) else []:
+        if isinstance(block, dict):
+            declared.update(str(name) for name in block)
+    referenced = {match.group(1) for match in _VAR_REFERENCE.finditer(terraform)}
+    missing = sorted(referenced - declared)
+    if not missing:
+        return terraform, []
+    additions = "\n".join(
+        f'variable "{name}" {{\n'
+        f'  description = "Auto-declared by TerraMind because the draft referenced var.{name} without declaring it; review the type and value."\n'
+        f'  default     = null\n'
+        f'}}\n'
+        for name in missing
+    )
+    return f"{terraform.rstrip()}\n\n{additions}", missing
 
 
 def _discover_terraform_files(workspace: Path) -> list[Path]:
