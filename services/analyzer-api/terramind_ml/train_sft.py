@@ -151,10 +151,13 @@ def encode_rows(
 
     source = _read_jsonl(path, limit, seed)
     encoded: list[dict[str, Any]] = []
-    for row in source:
+    total = len(source)
+    for index, row in enumerate(source, start=1):
         item = encode_conversation(tokenizer, row["messages"], max_length)
         if item is not None:
             encoded.append({key: np.asarray(value, dtype=np.int32) for key, value in item.items()})
+        if index % 2000 == 0 or index == total:
+            print(f"  tokenizing {index}/{total} examples ({len(encoded)} usable)...", flush=True)
     return encoded
 
 
