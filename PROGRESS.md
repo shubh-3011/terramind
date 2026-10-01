@@ -511,3 +511,14 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The measure is 8 examples; a larger provider-valid benchmark remains necessary before any quality claim.
 
 **Commits:** `af0400f5` (eval tooling) and the GGUF-export launcher added alongside.
+
+**Quantized and running without Ollama (verified)**
+
+- Converted the merged model to GGUF and quantized it with llama.cpp (`convert_hf_to_gguf.py` → f16 → `llama-quantize` **Q4_K_M**). Result: **940 MB** Q4_K_M GGUF and a `model-manifest.json` recording base model, pinned revision, license, quant type, size, and **SHA-256** `6917bf57…c7906`. Tools were pinned to llama.cpp `v0.5.0` (b11146) and its matching `gguf` python package.
+- Installed `llama-cpp-python 0.3.36` (CPU wheel) in the analyzer environment and generated through the bundled **`gguf` engine with no Ollama present**: `POST /v1/generate` with `engine: "gguf"` returned HTTP 200, `syntax_valid: true`, and a correct private S3 bucket with SSE + versioning, flagged by the static rules (`TM-STOR-001` AES256-instead-of-KMS information, `TM-STOR-003` missing lifecycle information). This is the first end-to-end proof that TerraMind generates Terraform with its own model and no external LLM service.
+- Added reusable visible-console launchers with live progress counters and logs: `scripts/train_model_live.bat`, `scripts/eval_model_live.bat`, `scripts/export_gguf_live.bat`.
+
+**Remaining for distribution**
+
+- Bundle/download the GGUF as a release asset and document `TERRAMIND_GGUF_MODEL` + `TERRAMIND_GENERATION_ENGINE=gguf` for end users; packaging `llama-cpp-python` (or the llama.cpp server binary) with the analyzer remains.
+- Provider-schema validity, intent fidelity, and larger-sample quality are still unmeasured.
