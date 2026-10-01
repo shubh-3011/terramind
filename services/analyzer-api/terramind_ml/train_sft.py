@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -269,7 +271,7 @@ def main() -> int:
 
     import torch
     from peft import LoraConfig, get_peft_model
-    from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+    from transformers import AutoModelForCausalLM, AutoTokenizer, get_cosine_schedule_with_warmup
 
     if not torch.cuda.is_available():
         parser.error("CUDA is required for this script; install the isolated CUDA-enabled training environment first")
@@ -303,16 +305,6 @@ def main() -> int:
     model.print_trainable_parameters()
     print(f"Training device: {next(model.parameters()).device}")
 
-    class PaddedDataset(torch.utils.data.Dataset):
-        def __init__(self, rows: list[dict[str, Any]]):
-            self.rows = rows
-
-        def __len__(self) -> int:
-            return len(self.rows)
-
-        def __getitem__(self, index: int) -> dict[str, Any]:
-            return self.rows[index]
-
     def collate(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
         import numpy as np
 
@@ -333,46 +325,105 @@ def main() -> int:
             "labels": torch.as_tensor(np.stack(labels), dtype=torch.long),
         }
 
-    training_args = TrainingArguments(
-        output_dir=str(args.output / "checkpoints"),
-        num_train_epochs=args.epochs,
-        per_device_train_batch_size=args.per_device_batch_size,
-        per_device_eval_batch_size=args.per_device_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        learning_rate=args.learning_rate,
-        lr_scheduler_type="cosine",
-        warmup_ratio=0.03,
-        weight_decay=0.01,
-        logging_steps=10,
-        eval_strategy="epoch",
-        save_strategy=args.save_strategy,
-        save_steps=args.save_steps,
-        save_total_limit=args.save_total_limit if args.save_strategy != "no" else None,
-        bf16=dtype == torch.bfloat16,
-        fp16=dtype == torch.float16,
-        gradient_checkpointing=True,
-        optim="adamw_torch",
-        report_to=[],
-        seed=args.seed,
-        data_seed=args.seed,
-        remove_unused_columns=False,
-        dataloader_num_workers=0,
-        use_cpu=False,
-        # Pinned memory can be pathologically slow on Windows/WDDM and can add
-        # tens of seconds per step, so keep it off unless explicitly requested.
-        dataloader_pin_memory=os.environ.get("TERRAMIND_TRAIN_PIN_MEMORY", "0") == "1",
-        tf32=True,
+    # A minimal, explicit training loop. Hugging Face Trainer measured ~16-25 s
+    # per step on this Windows/WDDM machine (>30x slower than running the same
+    # model and data directly), and it starved the GPU. We step the optimizer
+    # ourselves to keep throughput predictable.
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    if not trainable_params:
+        parser.error("No trainable parameters found; check the LoRA target modules")
+    optimizer = torch.optim.AdamW(trainable_params, lr=args.learning_rate, weight_decay=0.01)
+    batches_per_epoch = max(
+        1, math.ceil(len(train_rows) / (args.per_device_batch_size * args.gradient_accumulation_steps))
     )
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=PaddedDataset(train_rows),
-        eval_dataset=PaddedDataset(eval_rows),
-        data_collator=collate,
-        processing_class=tokenizer,
+    total_steps = max(1, batches_per_epoch * max(1, int(math.ceil(args.epochs))))
+    scheduler = get_cosine_schedule_with_warmup(
+        optimizer, num_warmup_steps=max(1, int(total_steps * 0.03)), num_training_steps=total_steps,
     )
-    train_result = trainer.train(resume_from_checkpoint=True if args.resume else None)
-    evaluation = trainer.evaluate()
+
+    def to_device(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        return {key: value.to("cuda") for key, value in batch.items()}
+
+    def evaluate() -> float:
+        model.eval()
+        losses: list[float] = []
+        with torch.no_grad():
+            for start in range(0, len(eval_rows), args.per_device_batch_size):
+                batch = to_device(collate(eval_rows[start:start + args.per_device_batch_size]))
+                losses.append(float(model(**batch).loss.item()))
+        model.train()
+        return sum(losses) / max(1, len(losses))
+
+    started = time.time()
+    debug = os.environ.get("TERRAMIND_TRAIN_DEBUG", "0") == "1"
+    global_step = 0
+    loss_sum = 0.0
+    loss_count = 0
+    recent_sum = 0.0
+    recent_count = 0
+    eval_loss = evaluate()
+    for epoch in range(max(1, int(math.ceil(args.epochs)))):
+        order = list(range(len(train_rows)))
+        random.Random(args.seed + epoch).shuffle(order)
+        optimizer.zero_grad(set_to_none=True)
+        window = list(range(0, len(order), args.per_device_batch_size))
+        for batch_number, start in enumerate(window, start=1):
+            indices = order[start:start + args.per_device_batch_size]
+            if debug:
+                torch.cuda.synchronize()
+                phase = time.time()
+            batch = to_device(collate([train_rows[index] for index in indices]))
+            if debug:
+                torch.cuda.synchronize()
+                data_time = time.time() - phase
+                phase = time.time()
+            outputs = model(**batch)
+            if debug:
+                torch.cuda.synchronize()
+                forward_time = time.time() - phase
+                phase = time.time()
+            raw_loss = float(outputs.loss.item())
+            (outputs.loss / args.gradient_accumulation_steps).backward()
+            if debug:
+                torch.cuda.synchronize()
+                backward_time = time.time() - phase
+                if batch_number <= 6:
+                    print(
+                        f"[debug] batch={batch_number} data={data_time:.3f} forward={forward_time:.3f} "
+                        f"backward={backward_time:.3f} tokens={int(batch['input_ids'].shape[1])}",
+                        flush=True,
+                    )
+            loss_sum += raw_loss
+            loss_count += 1
+            recent_sum += raw_loss
+            recent_count += 1
+            if batch_number % args.gradient_accumulation_steps == 0 or batch_number == len(window):
+                torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
+                global_step += 1
+                if global_step % 10 == 0:
+                    elapsed = time.time() - started
+                    print(
+                        f"step {global_step}/{total_steps} loss {recent_sum / max(1, recent_count):.4f} "
+                        f"elapsed {elapsed:.0f}s ({elapsed / global_step:.2f}s/step)",
+                        flush=True,
+                    )
+                    recent_sum = 0.0
+                    recent_count = 0
+        eval_loss = evaluate()
+        print(f"epoch {epoch + 1} eval_loss {eval_loss:.4f}", flush=True)
+        if args.save_strategy != "no":
+            model.save_pretrained(args.output / f"checkpoint-{global_step}", safe_serialization=True)
+
+    train_metrics = {
+        "train_loss": (loss_sum / loss_count) if loss_count else None,
+        "train_steps": global_step,
+        "train_runtime_seconds": round(time.time() - started, 1),
+        "examples_per_second": round(loss_count / max(1e-9, time.time() - started), 3),
+    }
+    evaluation = {"eval_loss": eval_loss}
     model.save_pretrained(args.output, safe_serialization=True)
     tokenizer.save_pretrained(args.output)
     metadata = {
@@ -402,7 +453,7 @@ def main() -> int:
         "save_strategy": args.save_strategy,
         "save_steps": args.save_steps,
         "save_total_limit": args.save_total_limit,
-        "train_metrics": train_result.metrics,
+        "train_metrics": train_metrics,
         "validation_metrics": evaluation,
         "limitations": [
             "Training/validation loss does not measure Terraform validity; low loss does not imply parseable, "
