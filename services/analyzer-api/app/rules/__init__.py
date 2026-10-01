@@ -10,9 +10,27 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from app.rules.base import CRITERIA_VERSION, Rule, RuleHelpers, RuleHit
-from app.rules import compute, database, identity, network, observability, storage
+from app.rules import (
+    compute,
+    database,
+    general,
+    identity,
+    multicloud,
+    network,
+    observability,
+    storage,
+)
 
-_MODULES = (network, storage, identity, database, compute, observability)
+_MODULES = (
+    general,
+    network,
+    storage,
+    identity,
+    database,
+    compute,
+    observability,
+    multicloud,
+)
 
 ALL_RULES: list[Rule] = [rule for module in _MODULES for rule in module.RULES]
 RULE_BY_ID: dict[str, Rule] = {rule.rule_id: rule for rule in ALL_RULES}

@@ -129,10 +129,13 @@ def test_malformed_file_reports_hcl_error_and_keeps_analyzing(tmp_path):
 
 
 def test_rule_registry_ids_are_unique_and_metadata_is_valid():
-    """The registry stays 45 unique, well-formed AWS rules."""
+    """The registry stays unique and well-formed as modules are added."""
     rule_ids = [rule.rule_id for rule in ALL_RULES]
 
-    assert len(rule_ids) == 45
+    # Do not hardcode a total: the registry spans AWS, multi-cloud, and
+    # provider-agnostic general Terraform rules and grows over time. Assert the
+    # invariants that matter instead of an exact count.
+    assert len(rule_ids) >= 45
     assert len(rule_ids) == len(set(rule_ids))
 
     for rule in ALL_RULES:

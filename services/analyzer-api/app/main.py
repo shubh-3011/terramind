@@ -7,6 +7,7 @@ workspace. HCL parsing and the small rule set are static checks only.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import urllib.error
@@ -36,6 +37,23 @@ MAX_FILE_BYTES = 1_000_000
 DEFAULT_HF_MAX_NEW_TOKENS = 2048
 MIN_HF_MAX_NEW_TOKENS = 128
 MAX_HF_MAX_NEW_TOKENS = 2048
+
+DEFAULT_OLLAMA_NUM_PREDICT = 4096
+MIN_OLLAMA_NUM_PREDICT = 256
+MAX_OLLAMA_NUM_PREDICT = 8192
+
+DEFAULT_OLLAMA_TEMPERATURE = 0.1
+MIN_OLLAMA_TEMPERATURE = 0.0
+MAX_OLLAMA_TEMPERATURE = 1.0
+
+DEFAULT_OLLAMA_NUM_CTX = 8192
+MIN_OLLAMA_NUM_CTX = 2048
+MAX_OLLAMA_NUM_CTX = 32768
+
+DEFAULT_OLLAMA_KEEP_ALIVE = "10m"
+_OLLAMA_KEEP_ALIVE_PATTERN = re.compile(
+    r"-1|(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h)?)(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h)?)*"
+)
 
 
 class AnalyzeRequest(BaseModel):
@@ -320,12 +338,62 @@ def _validate_ollama_url(ollama_url: str) -> None:
         raise HTTPException(status_code=503, detail="TerraMind only supports a loopback Ollama endpoint")
 
 
+def _ollama_num_predict() -> int:
+    """Return a bounded Ollama output-token limit suitable for interactive use."""
+    configured_value = os.environ.get("TERRAMIND_OLLAMA_NUM_PREDICT", str(DEFAULT_OLLAMA_NUM_PREDICT))
+    try:
+        configured_limit = int(configured_value)
+    except ValueError:
+        return DEFAULT_OLLAMA_NUM_PREDICT
+    return min(MAX_OLLAMA_NUM_PREDICT, max(MIN_OLLAMA_NUM_PREDICT, configured_limit))
+
+
+def _ollama_temperature() -> float:
+    """Return a bounded Ollama sampling temperature, defaulting on invalid input."""
+    configured_value = os.environ.get("TERRAMIND_OLLAMA_TEMPERATURE", str(DEFAULT_OLLAMA_TEMPERATURE))
+    try:
+        configured_temperature = float(configured_value)
+    except ValueError:
+        return DEFAULT_OLLAMA_TEMPERATURE
+    if not math.isfinite(configured_temperature):
+        return DEFAULT_OLLAMA_TEMPERATURE
+    return min(MAX_OLLAMA_TEMPERATURE, max(MIN_OLLAMA_TEMPERATURE, configured_temperature))
+
+
+def _ollama_num_ctx() -> int:
+    """Return a bounded Ollama context window, defaulting on invalid input."""
+    configured_value = os.environ.get("TERRAMIND_OLLAMA_NUM_CTX", str(DEFAULT_OLLAMA_NUM_CTX))
+    try:
+        configured_limit = int(configured_value)
+    except ValueError:
+        return DEFAULT_OLLAMA_NUM_CTX
+    return min(MAX_OLLAMA_NUM_CTX, max(MIN_OLLAMA_NUM_CTX, configured_limit))
+
+
+def _ollama_keep_alive() -> str:
+    """Return an Ollama keep-alive duration, defaulting on empty or invalid input."""
+    configured_value = os.environ.get("TERRAMIND_OLLAMA_KEEP_ALIVE", DEFAULT_OLLAMA_KEEP_ALIVE).strip()
+    if not configured_value or not _OLLAMA_KEEP_ALIVE_PATTERN.fullmatch(configured_value):
+        return DEFAULT_OLLAMA_KEEP_ALIVE
+    return configured_value
+
+
+def _ollama_options() -> dict[str, Any]:
+    """Return bounded, env-configurable generation options for the Ollama backend."""
+    return {
+        "temperature": _ollama_temperature(),
+        "num_predict": _ollama_num_predict(),
+        "num_ctx": _ollama_num_ctx(),
+    }
+
+
 def _generate_with_ollama(ollama_url: str, model: str, prompt: str) -> tuple[str, str]:
     payload = json.dumps({
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 8192},
+        "options": _ollama_options(),
+        "keep_alive": _ollama_keep_alive(),
     }).encode("utf-8")
     http_request = urllib.request.Request(
         f"{ollama_url}/api/generate", data=payload,

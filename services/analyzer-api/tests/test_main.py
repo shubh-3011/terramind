@@ -596,3 +596,116 @@ def test_service_rating_does_not_treat_no_findings_as_perfect_security(tmp_path)
     s3 = next(item for item in response.json()["service_ratings"] if item["service"] == "s3")
     assert s3["dimensions"]["security"]["score"] is None
     assert s3["dimensions"]["security"]["status"] == "insufficient_information"
+
+
+def test_ollama_generation_options_use_safe_defaults_when_unset():
+    from app.main import (
+        _ollama_keep_alive,
+        _ollama_num_ctx,
+        _ollama_num_predict,
+        _ollama_options,
+        _ollama_temperature,
+    )
+
+    with patch.dict("os.environ", {}, clear=True):
+        assert _ollama_num_predict() == 4096
+        assert _ollama_temperature() == 0.1
+        assert _ollama_num_ctx() == 8192
+        assert _ollama_keep_alive() == "10m"
+        assert _ollama_options() == {"temperature": 0.1, "num_predict": 4096, "num_ctx": 8192}
+
+
+def test_ollama_num_predict_is_clamped_and_configurable():
+    from app.main import _ollama_num_predict
+
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_PREDICT": "8192"}):
+        assert _ollama_num_predict() == 8192
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_PREDICT": "100000"}):
+        assert _ollama_num_predict() == 8192
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_PREDICT": "5"}):
+        assert _ollama_num_predict() == 256
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_PREDICT": "invalid"}):
+        assert _ollama_num_predict() == 4096
+
+
+def test_ollama_temperature_is_clamped_and_configurable():
+    from app.main import _ollama_temperature
+
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_TEMPERATURE": "0.7"}):
+        assert _ollama_temperature() == 0.7
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_TEMPERATURE": "2"}):
+        assert _ollama_temperature() == 1.0
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_TEMPERATURE": "-1"}):
+        assert _ollama_temperature() == 0.0
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_TEMPERATURE": "invalid"}):
+        assert _ollama_temperature() == 0.1
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_TEMPERATURE": "nan"}):
+        assert _ollama_temperature() == 0.1
+
+
+def test_ollama_num_ctx_is_clamped_and_configurable():
+    from app.main import _ollama_num_ctx
+
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_CTX": "32768"}):
+        assert _ollama_num_ctx() == 32768
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_CTX": "100000"}):
+        assert _ollama_num_ctx() == 32768
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_CTX": "100"}):
+        assert _ollama_num_ctx() == 2048
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_NUM_CTX": "invalid"}):
+        assert _ollama_num_ctx() == 8192
+
+
+def test_ollama_keep_alive_is_validated_and_configurable():
+    from app.main import _ollama_keep_alive
+
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_KEEP_ALIVE": "30m"}):
+        assert _ollama_keep_alive() == "30m"
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_KEEP_ALIVE": "-1"}):
+        assert _ollama_keep_alive() == "-1"
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_KEEP_ALIVE": "1h30m"}):
+        assert _ollama_keep_alive() == "1h30m"
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_KEEP_ALIVE": ""}):
+        assert _ollama_keep_alive() == "10m"
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_KEEP_ALIVE": "   "}):
+        assert _ollama_keep_alive() == "10m"
+    with patch.dict("os.environ", {"TERRAMIND_OLLAMA_KEEP_ALIVE": "not-a-duration"}):
+        assert _ollama_keep_alive() == "10m"
+
+
+def test_generate_with_ollama_sends_bounded_options_and_keep_alive(monkeypatch):
+    from app.main import _generate_with_ollama
+
+    captured: dict[str, dict] = {}
+
+    class OllamaResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps({
+                "model": "qwen2.5-coder:3b",
+                "response": 'resource "aws_s3_bucket" "example" {}',
+            }).encode("utf-8")
+
+    class OllamaOpener:
+        def open(self, request, *_args, **_kwargs):
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return OllamaResponse()
+
+    monkeypatch.setenv("TERRAMIND_OLLAMA_NUM_PREDICT", "2048")
+    monkeypatch.setenv("TERRAMIND_OLLAMA_TEMPERATURE", "0.25")
+    monkeypatch.setenv("TERRAMIND_OLLAMA_NUM_CTX", "4096")
+    monkeypatch.setenv("TERRAMIND_OLLAMA_KEEP_ALIVE", "5m")
+    with patch("app.main.urllib.request.build_opener", return_value=OllamaOpener()):
+        model, terraform = _generate_with_ollama("http://127.0.0.1:11434", "qwen2.5-coder:3b", "draft this")
+
+    assert model == "qwen2.5-coder:3b"
+    assert terraform == 'resource "aws_s3_bucket" "example" {}'
+    payload = captured["payload"]
+    assert payload["stream"] is False
+    assert payload["keep_alive"] == "5m"
+    assert payload["options"] == {"temperature": 0.25, "num_predict": 2048, "num_ctx": 4096}

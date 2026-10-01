@@ -83,7 +83,9 @@ def build_service_ratings(documents: list[dict[str, Any]], findings: list[Any]) 
     maintainability_facts = _document_maintainability_facts(documents)
 
     results: list[dict[str, Any]] = []
-    for service, instances in sorted(resources_by_service.items()):
+    services = sorted(set(resources_by_service) | set(findings_by_service))
+    for service in services:
+        instances = resources_by_service.get(service, [])
         count = len(instances)
         relevant = findings_by_service.get(service, [])
         reliability = _reliability_dimension(instances)
@@ -197,6 +199,12 @@ def _structural_security_evidence(
             evidence.append((35, f"{resource_type}.{label}: publicly_accessible=true"))
         if _as_bool(attributes.get("storage_encrypted")) is False:
             evidence.append((15, f"{resource_type}.{label}: storage_encrypted=false"))
+    if resource_type == "azurerm_storage_account":
+        if _as_bool(attributes.get("allow_nested_items_to_be_public")) is True:
+            evidence.append((
+                35,
+                f"{resource_type}.{label}: allow_nested_items_to_be_public=true",
+            ))
     return evidence
 
 
@@ -449,6 +457,14 @@ def _service_for_finding(finding: Any, rule_services: dict[str, str]) -> str | N
 
 
 def _iter_resources(documents: list[dict[str, Any]]):
+    """Yield ``(resource_type, label, attributes)`` for every provider.
+
+    Only ``resource`` blocks are traversed.  ``data`` blocks and other
+    non-resource top-level blocks (``provider``, ``module``, ``terraform``,
+    ...) are intentionally skipped.  Resource types are no longer restricted
+    to the ``aws_`` prefix so Azure, Google Cloud and general Terraform are
+    covered by the same traversal.
+    """
     for document in documents:
         if not isinstance(document, dict):
             continue
@@ -459,7 +475,7 @@ def _iter_resources(documents: list[dict[str, Any]]):
             if not isinstance(block, dict):
                 continue
             for resource_type, instances in block.items():
-                if not str(resource_type).startswith("aws_") or not isinstance(instances, dict):
+                if not isinstance(instances, dict):
                     continue
                 for label, attributes in instances.items():
                     if isinstance(attributes, dict):
@@ -467,6 +483,7 @@ def _iter_resources(documents: list[dict[str, Any]]):
 
 
 def _service_for_resource(resource_type: str) -> str:
+    # AWS: preserved unchanged from the original AWS-only mapping.
     if resource_type.startswith("aws_s3_"):
         return "s3"
     if resource_type.startswith("aws_iam_"):
@@ -486,6 +503,52 @@ def _service_for_resource(resource_type: str) -> str:
         "aws_instance", "aws_launch_", "aws_autoscaling_", "aws_ecs_", "aws_eks_", "aws_lambda_",
     )):
         return "compute"
+
+    # Azure (azurerm provider).
+    if resource_type.startswith("azurerm_storage_") or resource_type in {
+        "azurerm_managed_disk", "azurerm_snapshot",
+    }:
+        return "storage"
+    if resource_type.startswith((
+        "azurerm_mssql_", "azurerm_postgresql_", "azurerm_mysql_",
+        "azurerm_cosmosdb_", "azurerm_redis_",
+    )):
+        return "database"
+    if resource_type.startswith((
+        "azurerm_virtual_machine", "azurerm_linux_virtual_machine",
+        "azurerm_windows_virtual_machine", "azurerm_kubernetes_cluster",
+        "azurerm_function_app", "azurerm_linux_web_app", "azurerm_app_service",
+    )):
+        return "compute"
+    if resource_type.startswith((
+        "azurerm_network_security_rule", "azurerm_network_security_group",
+        "azurerm_subnet", "azurerm_virtual_network", "azurerm_public_ip",
+        "azurerm_lb", "azurerm_application_gateway",
+    )):
+        return "networking"
+    if resource_type.startswith("azurerm_key_vault"):
+        return "secrets"
+
+    # Google Cloud (google provider).
+    if resource_type.startswith("google_storage_bucket"):
+        return "storage"
+    if resource_type.startswith(("google_sql_", "google_spanner_", "google_bigtable_")):
+        return "database"
+    if resource_type.startswith((
+        "google_compute_instance", "google_container_cluster",
+        "google_cloudfunctions", "google_cloud_run",
+    )):
+        return "compute"
+    if resource_type.startswith((
+        "google_compute_firewall", "google_compute_network", "google_compute_subnetwork",
+        "google_compute_forwarding_rule",
+    )):
+        return "networking"
+
+    # Provider-agnostic building blocks are explicitly tracked as "other".
+    if resource_type.startswith(("kubernetes_", "random_", "null_", "local_", "tls_")):
+        return "other"
+
     return "other"
 
 
