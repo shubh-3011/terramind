@@ -23,9 +23,10 @@ lives in [GENERATIVE_TRAINING.md](GENERATIVE_TRAINING.md) and
 | Fine-tuning method | LoRA supervised fine-tuning; assistant-response tokens only |
 | Training task | Natural-language request -> reviewable Terraform HCL |
 | Distribution format | GGUF (`Q4_K_M` by default), produced by `terramind_ml.export_gguf` |
-| Release asset | `terramind-qwen2.5-coder-1.5b-terraform-merged-Q4_K_M.gguf` |
-| Asset size | 940 MB (986,048,192 bytes; 940.37 MiB) |
-| SHA-256 | `6917bf571e822b5739b671509c37e32c66800c78af9d54c6546326e13fec7906` |
+| Release asset | `terramind-qwen2.5-coder-v2-merged-Q4_K_M.gguf` (v1: `...-1.5b-terraform-merged-Q4_K_M.gguf`) |
+| Asset size | 940 MB (986,048,064 bytes; 940.37 MiB) |
+| SHA-256 (v2) | `1ecf85fe05590ac5959cbd023e41a126f61882b070c46d4600947dbc0e8ba492` |
+| SHA-256 (v1) | `6917bf571e822b5739b671509c37e32c66800c78af9d54c6546326e13fec7906` |
 | Quantization | `Q4_K_M` |
 | Runtime | local `llama-cpp-python` (llama.cpp) via `TERRAMIND_GGUF_MODEL`; no Ollama required |
 | Language(s) | English prompts; Terraform HCL output (HCL2) |
@@ -113,20 +114,25 @@ and - when explicitly opted in with a pre-initialized provider cache - provider-
 | Optimizer steps | 2,395 |
 | Train loss | 0.475 |
 | Eval loss | 0.470 |
-| Training wall-clock | ~2.75 hours |
-| Held-out HCL parse rate (early 8-example smoke) | 8 / 8 |
-| Held-out HCL parse rate (12-example eval, after auto-declare) | 9 / 12 (75%) |
-| Held-out `terraform validate` acceptance (12-example eval, AWS provider 6.66.0) | 6 / 12 (50%) |
+| Training wall-clock | v1 ~2.75 h (1 epoch); v2 ~6.3 h (2 epochs) |
+| Held-out HCL parse rate (early 8-example smoke, v1) | 8 / 8 |
+| v1: parse / `terraform validate` (12-example eval) | 9/12 (75%) / 6/12 (50%) |
+| v2: parse / `terraform validate` (12-example eval) | 10/12 (83%) / 5/12 (42%) |
 | Quantization | `Q4_K_M` |
-| GGUF SHA-256 | `6917bf571e822b5739b671509c37e32c66800c78af9d54c6546326e13fec7906` |
+| GGUF SHA-256 (shipped v2) | `1ecf85fe05590ac5959cbd023e41a126f61882b070c46d4600947dbc0e8ba492` |
 
 **Read these honestly.** The parse rates are **HCL syntax** results (8/8 on an easy smoke set;
-75% on a broader 12-example set), and the 50% figure is real `terraform validate` acceptance —
-neither is semantic correctness, security, cost, or intent fidelity. A deterministic
-post-processor declares undeclared `var.*` references (`checks.auto_declared_variables`), which
-raised parse 67%->75% and provider acceptance 42%->50%. The model can still ignore a stated
+75% v1 and 83% v2 on a broader 12-example set), and the 42-50% figures are real
+`terraform validate` acceptance — neither is semantic correctness, security, cost, or intent
+fidelity. A deterministic post-processor declares undeclared `var.*` references
+(`checks.auto_declared_variables`), which raised v1 parse 67%->75% and provider acceptance
+42%->50%. **The second training epoch (v2) improved parse rate (75%->83%) but not provider
+acceptance (50%->42%); with only 12 examples the two provider figures are within noise, so
+neither model is clearly better on schema validity.** The model can still ignore a stated
 constraint (for example it may emit a broad security-group CIDR despite "no public SSH"),
-reference the wrong argument name, or emit unparsable output after the single repair attempt.
+reference a resource it never declared, or emit unparsable output after the single repair
+attempt. Meaningful gains require more reviewed, provider-valid training data or a larger base
+model — not more epochs on the same corpus.
 Train/eval loss describes corpus fit only. Human review and the deterministic TerraMind gates
 (parsing, static rules, optional provider `terraform validate`) still decide whether a draft is
 usable.
