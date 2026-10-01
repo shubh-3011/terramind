@@ -15,6 +15,7 @@
 	"activationEvents": [
 		"onCommand:terramind.analyzeWorkspace",
 		"onCommand:terramind.generateInfrastructure",
+		"onCommand:terramind.generateInfrastructureWizard",
 		"onCommand:terramind.proposeRepair",
 		"onCommand:terramind.openDashboard"
 	],
@@ -36,6 +37,11 @@
 			{
 				"command": "terramind.generateInfrastructure",
 				"title": "%command.generateInfrastructure%",
+				"category": "TerraMind"
+			},
+			{
+				"command": "terramind.generateInfrastructureWizard",
+				"title": "%command.generateInfrastructureWizard%",
 				"category": "TerraMind"
 			},
 			{

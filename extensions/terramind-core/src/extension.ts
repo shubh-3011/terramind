@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { openGenerateWizard } from './generateView';
 
 interface AnalysisResult {
 	readonly terraform_file_count: number;
@@ -14,12 +15,34 @@ interface AnalysisResult {
 	readonly risk_prediction_reason: string | null;
 	readonly checks: Readonly<Record<string, string>>;
 	readonly service_ratings: readonly ServiceRating[];
+	readonly recommendations?: readonly Recommendation[];
+}
+
+interface RatingDimension {
+	readonly score: number | null;
+	readonly status: string;
+	readonly summary: string;
+	readonly evidence?: readonly string[];
+	readonly evidence_finding_ids?: readonly string[];
+	readonly assumptions?: readonly string[];
+	readonly limitations?: readonly string[];
 }
 
 interface ServiceRating {
 	readonly service: string;
 	readonly resource_count: number;
-	readonly dimensions: Readonly<Record<string, { readonly score: number | null; readonly status: string; readonly summary: string }>>;
+	readonly dimensions: Readonly<Record<string, RatingDimension>>;
+}
+
+interface Recommendation {
+	readonly rule_id: string;
+	readonly title: string;
+	readonly severity: 'error' | 'warning' | 'information';
+	readonly count: number;
+	readonly priority: number;
+	readonly message: string;
+	readonly recommendation: string;
+	readonly files?: readonly string[];
 }
 
 interface GenerationResult {
@@ -30,6 +53,7 @@ interface GenerationResult {
 	readonly validation_scope: string;
 	readonly findings?: readonly AnalysisFinding[];
 	readonly service_ratings?: readonly ServiceRating[];
+	readonly recommendations?: readonly Recommendation[];
 	readonly checks?: Readonly<Record<string, string>>;
 }
 
@@ -61,12 +85,20 @@ class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeI
 	private workspaceStatus = 'No Analysis Run';
 	private riskStatus = 'Not Available';
 	private ratingItems: readonly { readonly label: string; readonly description: string }[] = [];
+	private recommendationItems: readonly { readonly label: string; readonly description: string }[] = [];
 
-	refresh(analyzerStatus: string, workspaceStatus: string, riskStatus: string, ratingItems: readonly { readonly label: string; readonly description: string }[] = []): void {
+	refresh(
+		analyzerStatus: string,
+		workspaceStatus: string,
+		riskStatus: string,
+		ratingItems: readonly { readonly label: string; readonly description: string }[] = [],
+		recommendationItems: readonly { readonly label: string; readonly description: string }[] = []
+	): void {
 		this.analyzerStatus = analyzerStatus;
 		this.workspaceStatus = workspaceStatus;
 		this.riskStatus = riskStatus;
 		this.ratingItems = ratingItems;
+		this.recommendationItems = recommendationItems;
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -79,7 +111,8 @@ class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeI
 			this.createItem('TerraMind Analyzer', this.analyzerStatus, 'server'),
 			this.createItem('Terraform Workspace', this.workspaceStatus, 'file-code'),
 			this.createItem(vscode.l10n.t('Experimental Risk Estimate'), this.riskStatus, 'shield'),
-			...this.ratingItems.map(item => this.createItem(item.label, item.description, 'graph'))
+			...this.ratingItems.map(item => this.createItem(item.label, item.description, 'graph')),
+			...this.recommendationItems.map(item => this.createItem(item.label, item.description, 'lightbulb'))
 		];
 	}
 
@@ -91,11 +124,21 @@ class TerraMindDashboardProvider implements vscode.TreeDataProvider<vscode.TreeI
 	}
 }
 
+let sharedOutputChannel: vscode.OutputChannel | undefined;
+
+function getOutputChannel(context: vscode.ExtensionContext): vscode.OutputChannel {
+	if (!sharedOutputChannel) {
+		sharedOutputChannel = vscode.window.createOutputChannel('TerraMind');
+		context.subscriptions.push(sharedOutputChannel);
+	}
+	return sharedOutputChannel;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
-	const output = vscode.window.createOutputChannel('TerraMind');
+	const output = getOutputChannel(context);
 	const diagnostics = vscode.languages.createDiagnosticCollection('terramind');
 	const dashboard = new TerraMindDashboardProvider();
-	context.subscriptions.push(output, diagnostics, vscode.window.registerTreeDataProvider('terramind.dashboard', dashboard));
+	context.subscriptions.push(diagnostics, vscode.window.registerTreeDataProvider('terramind.dashboard', dashboard));
 
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.openDashboard', async () => {
 		await vscode.commands.executeCommand('workbench.view.extension.terramind');
@@ -149,19 +192,33 @@ export function activate(context: vscode.ExtensionContext): void {
 				const riskStatus = result.risk_prediction
 					? vscode.l10n.t('{0}% · uncalibrated · n={1}', Math.round(result.risk_prediction.probability * 100), result.risk_prediction.training_samples)
 					: result.risk_prediction_reason ?? vscode.l10n.t('Not Available');
+				const scoredDimension = (dimension: RatingDimension | undefined, label: string): string | undefined => {
+					if (!dimension || dimension.score === null || dimension.score === undefined) {
+						return undefined;
+					}
+					return `${label} ${dimension.score}/100`;
+				};
 				const ratingItems = (result.service_ratings ?? []).map(rating => {
-					const security = rating.dimensions.security;
-					const securityValue = security?.score === null || security?.score === undefined
-						? vscode.l10n.t('security not rated')
-						: vscode.l10n.t('security {0}/100 · limited evidence', security.score);
-					const unknownDimensions = ['reliability', 'scalability', 'cost', 'maintainability']
-						.filter(dimension => rating.dimensions[dimension]?.status === 'insufficient_information').join(', ');
+					const scores = [
+						scoredDimension(rating.dimensions.security, 'security'),
+						scoredDimension(rating.dimensions.reliability, 'reliability'),
+						scoredDimension(rating.dimensions.maintainability, 'maintainability')
+					].filter((value): value is string => Boolean(value));
+					const notRated = ['security', 'reliability', 'scalability', 'cost', 'maintainability']
+						.filter(dimension => rating.dimensions[dimension]?.status === 'insufficient_information');
+					const description = scores.length
+						? `${scores.join(' · ')}${notRated.length ? ` · ${vscode.l10n.t('not rated')}: ${notRated.join(', ')}` : ''}`
+						: vscode.l10n.t('no dimension scored');
 					return {
 						label: `${rating.service} (${rating.resource_count})`,
-						description: unknownDimensions ? `${securityValue} · ${vscode.l10n.t('not rated')}: ${unknownDimensions}` : securityValue
+						description
 					};
 				});
-				dashboard.refresh(vscode.l10n.t('Connected'), workspaceStatus, riskStatus, ratingItems);
+				const recommendationItems = (result.recommendations ?? []).slice(0, 8).map(recommendation => ({
+					label: `#${recommendation.priority} ${recommendation.rule_id} · ${recommendation.severity}`,
+					description: recommendation.title || recommendation.message
+				}));
+				dashboard.refresh(vscode.l10n.t('Connected'), workspaceStatus, riskStatus, ratingItems, recommendationItems);
 				const errors = result.findings.filter(finding => finding.severity === 'error').length;
 				const warnings = result.findings.filter(finding => finding.severity === 'warning').length;
 				output.appendLine(`Analysis status=${result.status}; parsed=${result.parsed_file_count}/${result.terraform_file_count}; errors=${errors}; warnings=${warnings}`);
@@ -181,6 +238,9 @@ export function activate(context: vscode.ExtensionContext): void {
 				}
 				if (result.risk_prediction) {
 					output.appendLine(`EXPERIMENTAL ML control-risk estimate=${(result.risk_prediction.probability * 100).toFixed(1)}%; samples=${result.risk_prediction.training_samples}; model=${result.risk_prediction.model_version}; calibrated=${result.risk_prediction.calibrated}`);
+				}
+				for (const recommendation of result.recommendations ?? []) {
+					output.appendLine(`RECOMMENDATION #${recommendation.priority} [${recommendation.severity}] ${recommendation.rule_id} ×${recommendation.count}: ${recommendation.recommendation}`);
 				}
 				await vscode.window.showInformationMessage(vscode.l10n.t(
 					'TerraMind parsed {0}/{1} Terraform files and found {2} error(s), {3} warning(s).',
@@ -233,71 +293,39 @@ export function activate(context: vscode.ExtensionContext): void {
 				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with the configured local model'),
 				cancellable: false
 			}, () => requestGeneration(requirements.trim(), resourceInventory?.trim() ?? '', connectivity?.trim() ?? '', constraints?.trim() ?? '', model, workspaceFolder.uri.fsPath, runExternalTools, vscode.workspace.isTrusted));
-			if (!generated.syntax_valid) {
-				throw new Error('The generated draft did not pass HCL syntax parsing.');
-			}
-			output.appendLine(`Generated Terraform draft with ${generated.model}. ${generated.validation_scope}`);
-			const findings = generated.findings ?? [];
-			for (const [check, status] of Object.entries(generated.checks ?? {})) {
-				output.appendLine(`GENERATED CHECK ${check}: ${status}`);
-			}
-			const errors = findings.filter(finding => finding.severity === 'error').length;
-			const warnings = findings.filter(finding => finding.severity === 'warning').length;
-			for (const finding of findings) {
-				output.appendLine(`${finding.severity.toUpperCase()} ${finding.rule_id} ${finding.file}${finding.line ? `:${finding.line}` : ''}: ${finding.message}`);
-			}
-			for (const rating of generated.service_ratings ?? []) {
-				for (const [dimension, details] of Object.entries(rating.dimensions)) {
-					output.appendLine(`GENERATED RATING ${rating.service} ${dimension}: ${details.status}${details.score === null ? '' : ` ${details.score}/100`}; ${details.summary}`);
-				}
-			}
-			output.show(true);
-			const preview = await vscode.workspace.openTextDocument({ language: 'terraform', content: generated.terraform });
-			await vscode.window.showTextDocument(preview, { preview: false });
-			const providerValidation = generated.checks?.terraform_validate ?? vscode.l10n.t('not_run: no validation status returned');
-			const choice = await vscode.window.showInformationMessage(
-				vscode.l10n.t('Draft parsed as HCL; static/CLI checks found {0} error(s) and {1} warning(s). Terraform validate: {2}. Cost, runtime availability, and deployment behavior are not verified.', errors, warnings, providerValidation),
-				{ modal: true },
-				vscode.l10n.t('Save Draft to Workspace'),
-				vscode.l10n.t('Discard')
-			);
-			if (choice !== vscode.l10n.t('Save Draft to Workspace')) {
-				return;
-			}
-			const target = await vscode.window.showSaveDialog({
-				defaultUri: vscode.Uri.joinPath(workspaceFolder.uri, 'terramind-generated', 'main.tf'),
-				saveLabel: vscode.l10n.t('Save Reviewed Terraform Draft'),
-				filters: { [vscode.l10n.t('Terraform')]: ['tf'] }
-			});
-			if (!target) {
-				return;
-			}
-			if (vscode.workspace.getWorkspaceFolder(target)?.uri.toString() !== workspaceFolder.uri.toString()) {
-				await vscode.window.showErrorMessage(vscode.l10n.t('Choose a location inside the currently open workspace.'));
-				return;
-			}
-			try {
-				await vscode.workspace.fs.stat(target);
-				const overwrite = await vscode.window.showWarningMessage(
-					vscode.l10n.t('This file already exists. Replace it with the reviewed draft?'),
-					{ modal: true }, vscode.l10n.t('Overwrite')
-				);
-				if (overwrite !== vscode.l10n.t('Overwrite')) {
-					return;
-				}
-			} catch (error) {
-				if (!(error instanceof vscode.FileSystemError) || error.code !== 'FileNotFound') {
-					throw error;
-				}
-			}
-			await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(generated.terraform));
-			output.appendLine(`Saved reviewed draft to ${vscode.workspace.asRelativePath(target)}; starting workspace analysis.`);
-			await vscode.commands.executeCommand('terramind.analyzeWorkspace');
+			await presentGeneratedDraft(context, workspaceFolder, generated);
 		} catch (error) {
 			output.appendLine(`Local Terraform generation failed: ${getErrorMessage(error)}`);
 			output.show(true);
 			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not generate a draft. Confirm the local analyzer and configured model backend are available.'));
 		}
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('terramind.generateInfrastructureWizard', async () => {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			await vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before generating Terraform.'));
+			return;
+		}
+		openGenerateWizard(context, workspaceFolder, async submission => {
+			const model = vscode.workspace.getConfiguration('terramind').get<string>('generationModel', 'qwen2.5-coder:3b');
+			const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
+			const generated = await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with the configured local model'),
+				cancellable: false
+			}, () => requestGeneration(
+				submission.description,
+				submission.resourceInventory,
+				submission.connectivity,
+				submission.constraints,
+				model,
+				workspaceFolder.uri.fsPath,
+				runExternalTools,
+				vscode.workspace.isTrusted
+			));
+			await presentGeneratedDraft(context, workspaceFolder, generated);
+		});
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.proposeRepair', async () => {
@@ -389,6 +417,81 @@ export function activate(context: vscode.ExtensionContext): void {
 			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not prepare a repair proposal. Confirm the local analyzer and configured model backend are available.'));
 		}
 	}));
+}
+
+/**
+ * Reviews a generated draft through the same safety flow for every entry point: preview the HCL,
+ * log findings/ratings/checks, confirm before writing, then re-run workspace analysis.
+ */
+export async function presentGeneratedDraft(
+	context: vscode.ExtensionContext,
+	workspaceFolder: vscode.WorkspaceFolder,
+	generated: GenerationResult
+): Promise<void> {
+	if (!generated.syntax_valid) {
+		throw new Error('The generated draft did not pass HCL syntax parsing.');
+	}
+	const output = getOutputChannel(context);
+	output.appendLine(`Generated Terraform draft with ${generated.model}. ${generated.validation_scope}`);
+	const findings = generated.findings ?? [];
+	for (const [check, status] of Object.entries(generated.checks ?? {})) {
+		output.appendLine(`GENERATED CHECK ${check}: ${status}`);
+	}
+	const errors = findings.filter(finding => finding.severity === 'error').length;
+	const warnings = findings.filter(finding => finding.severity === 'warning').length;
+	for (const finding of findings) {
+		output.appendLine(`${finding.severity.toUpperCase()} ${finding.rule_id} ${finding.file}${finding.line ? `:${finding.line}` : ''}: ${finding.message}`);
+	}
+	for (const rating of generated.service_ratings ?? []) {
+		for (const [dimension, details] of Object.entries(rating.dimensions)) {
+			output.appendLine(`GENERATED RATING ${rating.service} ${dimension}: ${details.status}${details.score === null ? '' : ` ${details.score}/100`}; ${details.summary}`);
+		}
+	}
+	for (const recommendation of generated.recommendations ?? []) {
+		output.appendLine(`GENERATED RECOMMENDATION #${recommendation.priority} [${recommendation.severity}] ${recommendation.rule_id} ×${recommendation.count}: ${recommendation.recommendation}`);
+	}
+	output.show(true);
+	const preview = await vscode.workspace.openTextDocument({ language: 'terraform', content: generated.terraform });
+	await vscode.window.showTextDocument(preview, { preview: false });
+	const providerValidation = generated.checks?.terraform_validate ?? vscode.l10n.t('not_run: no validation status returned');
+	const choice = await vscode.window.showInformationMessage(
+		vscode.l10n.t('Draft parsed as HCL; static/CLI checks found {0} error(s) and {1} warning(s). Terraform validate: {2}. Cost, runtime availability, and deployment behavior are not verified.', errors, warnings, providerValidation),
+		{ modal: true },
+		vscode.l10n.t('Save Draft to Workspace'),
+		vscode.l10n.t('Discard')
+	);
+	if (choice !== vscode.l10n.t('Save Draft to Workspace')) {
+		return;
+	}
+	const target = await vscode.window.showSaveDialog({
+		defaultUri: vscode.Uri.joinPath(workspaceFolder.uri, 'terramind-generated', 'main.tf'),
+		saveLabel: vscode.l10n.t('Save Reviewed Terraform Draft'),
+		filters: { [vscode.l10n.t('Terraform')]: ['tf'] }
+	});
+	if (!target) {
+		return;
+	}
+	if (vscode.workspace.getWorkspaceFolder(target)?.uri.toString() !== workspaceFolder.uri.toString()) {
+		await vscode.window.showErrorMessage(vscode.l10n.t('Choose a location inside the currently open workspace.'));
+		return;
+	}
+	try {
+		await vscode.workspace.fs.stat(target);
+		const overwrite = await vscode.window.showWarningMessage(
+			vscode.l10n.t('This file already exists. Replace it with the reviewed draft?'),
+			{ modal: true }, vscode.l10n.t('Overwrite')
+		);
+		if (overwrite !== vscode.l10n.t('Overwrite')) {
+			return;
+		}
+	} catch (error) {
+		if (!(error instanceof vscode.FileSystemError) || error.code !== 'FileNotFound') {
+			throw error;
+		}
+	}
+	await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(generated.terraform));
+	output.appendLine(`Saved reviewed draft to ${vscode.workspace.asRelativePath(target)}; starting workspace analysis.`);
+	await vscode.commands.executeCommand('terramind.analyzeWorkspace');
 }
 
 async function requestAnalysis(workspacePath: string, runExternalTools: boolean, workspaceTrusted: boolean): Promise<AnalysisResult> {
