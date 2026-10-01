@@ -56,28 +56,66 @@ def resolve_base_model(preset: str, model: str | None = None, model_revision: st
     }
 
 
+#: ChatML marker that starts the assistant turn in the Qwen family chat templates.
+ASSISTANT_HEADER = "<|im_start|>assistant\n"
+
+
+def _last_subsequence_end(sequence: list[int], subsequence: list[int]) -> int | None:
+    """Return the end index of the last occurrence of ``subsequence`` in ``sequence``."""
+    if not subsequence or len(subsequence) > len(sequence):
+        return None
+    for start in range(len(sequence) - len(subsequence), -1, -1):
+        if sequence[start:start + len(subsequence)] == subsequence:
+            return start + len(subsequence)
+    return None
+
+
+def _assistant_mask_length(tokenizer: Any, full_ids: list[int], messages: list[dict[str, str]]) -> int | None:
+    """Find how many leading tokens belong to the prompt (loss must ignore them).
+
+    Tokenizing the assistant header on its own is not reliable: when the answer
+    begins with blank lines, byte-pair merges absorb the header's trailing
+    newline differently than in the full conversation, so an exact-prefix check
+    fails on a meaningful fraction of rows. Instead we search for the assistant
+    header inside the real token stream and mask everything up to its end.
+    """
+    try:
+        marker_ids = list(tokenizer.encode(ASSISTANT_HEADER, add_special_tokens=False))
+    except Exception:  # noqa: BLE001 - some tokenizers require special handling
+        marker_ids = []
+    mask = _last_subsequence_end(full_ids, marker_ids)
+    if mask is not None:
+        return mask
+    # Fallback for templates without the ChatML marker: use the prompt prefix.
+    prompt_ids = tokenizer.apply_chat_template(messages[:2], tokenize=True, add_generation_prompt=True)
+    if isinstance(prompt_ids, dict):
+        prompt_ids = prompt_ids["input_ids"]
+    prompt_ids = list(prompt_ids)
+    if full_ids[:len(prompt_ids)] == prompt_ids:
+        return len(prompt_ids)
+    return None
+
+
 def encode_conversation(tokenizer: Any, messages: list[dict[str, str]], max_length: int) -> dict[str, list[int]] | None:
     """Mask system/user tokens so SFT loss is applied only to the assistant answer."""
     if len(messages) != 3 or messages[2].get("role") != "assistant":
         return None
-    prompt_ids = tokenizer.apply_chat_template(
-        messages[:2], tokenize=True, add_generation_prompt=True,
-    )
     full_ids = tokenizer.apply_chat_template(
         messages, tokenize=True, add_generation_prompt=False,
     )
-    if isinstance(prompt_ids, dict):
-        prompt_ids = prompt_ids["input_ids"]
     if isinstance(full_ids, dict):
         full_ids = full_ids["input_ids"]
-    prompt_ids = list(prompt_ids)
     full_ids = list(full_ids)
-    if not full_ids[:len(prompt_ids)] == prompt_ids:
-        raise ValueError("Tokenizer chat template does not preserve the user/assistant prefix boundary")
-    full_ids = full_ids[:max_length]
-    if len(full_ids) <= len(prompt_ids) + 8:
+    mask_length = _assistant_mask_length(tokenizer, full_ids, messages)
+    if mask_length is None:
         return None
-    labels = [-100] * min(len(prompt_ids), len(full_ids)) + full_ids[len(prompt_ids):]
+    full_ids = full_ids[:max_length]
+    mask_length = min(mask_length, len(full_ids))
+    if len(full_ids) <= mask_length + 8:
+        return None
+    labels = [-100] * mask_length + full_ids[mask_length:]
+    if len(labels) != len(full_ids):
+        return None
     return {"input_ids": full_ids, "labels": labels, "attention_mask": [1] * len(full_ids)}
 
 

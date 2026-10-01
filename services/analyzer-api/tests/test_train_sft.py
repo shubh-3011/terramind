@@ -35,7 +35,7 @@ def test_sft_encoding_masks_prompt_and_trains_only_assistant_tokens():
     assert encoded["labels"][3:] == encoded["input_ids"][3:]
 
 
-def test_sft_encoding_rejects_inconsistent_chat_template_prefix():
+def test_sft_encoding_skips_examples_with_inconsistent_chat_template_prefix():
     class MismatchTokenizer(FakeTokenizer):
         def apply_chat_template(self, messages, *, tokenize, add_generation_prompt):
             tokens = super().apply_chat_template(messages, tokenize=tokenize, add_generation_prompt=add_generation_prompt)
@@ -48,8 +48,32 @@ def test_sft_encoding_rejects_inconsistent_chat_template_prefix():
         {"role": "user", "content": "request"},
         {"role": "assistant", "content": "a sufficiently long Terraform answer"},
     ]
-    with pytest.raises(ValueError, match="prefix boundary"):
-        encode_conversation(MismatchTokenizer(), messages, max_length=64)
+    # A row whose prompting cannot be located is skipped, never fatal to the run.
+    assert encode_conversation(MismatchTokenizer(), messages, max_length=64) is None
+
+
+def test_sft_encoding_uses_assistant_marker_in_token_stream():
+    """Blank-line answers move the BPE boundary; the assistant marker must be found inline."""
+    class MarkerTokenizer:
+        MARKER = [151644, 77091, 198]
+
+        def encode(self, text, add_special_tokens=False):
+            return list(self.MARKER)
+
+        def apply_chat_template(self, messages, *, tokenize, add_generation_prompt):
+            if add_generation_prompt:
+                return [10, 11] + list(self.MARKER)
+            return [10, 11] + list(self.MARKER) + list(range(20, 30))
+
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "request"},
+        {"role": "assistant", "content": "\n\nresource \"aws_s3_bucket\" \"b\" {}"},
+    ]
+    encoded = encode_conversation(MarkerTokenizer(), messages, max_length=64)
+    assert encoded is not None
+    assert encoded["labels"][:5] == [-100] * 5
+    assert encoded["labels"][5:] == encoded["input_ids"][5:]
 
 
 def test_sft_encoding_skips_examples_with_no_answer_tokens_after_truncation():
