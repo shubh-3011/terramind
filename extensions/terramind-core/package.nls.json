@@ -13,5 +13,7 @@
 	"configuration.title": "TerraMind",
 	"configuration.analyzerUrl": "Base URL for the local TerraMind analyzer service.",
 	"configuration.generationModel": "Model name already installed in the local Ollama instance.",
+	"configuration.generationEngine": "Local generation engine used by the analyzer: auto selects the best available engine, ollama uses your local Ollama instance, transformers uses the bundled in-process model, and gguf loads a local .gguf file.",
+	"configuration.ggufModelPath": "Absolute path to a local .gguf model file for the bundled gguf generation engine. Used by the analyzer only when the generation engine is set to gguf.",
 	"configuration.runExternalTools": "Run installed Terraform fmt/validate, TFLint, and Checkov during analysis, and validate generated drafts against an existing local provider cache. Disabled by default and skipped in VS Code Restricted Mode; validation may execute provider plugins, and TerraMind never runs init, plan, or apply."
 }

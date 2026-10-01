@@ -106,6 +106,22 @@
 					"default": "qwen2.5-coder:3b",
 					"description": "%configuration.generationModel%"
 				},
+				"terramind.generationEngine": {
+					"type": "string",
+					"enum": [
+						"auto",
+						"ollama",
+						"transformers",
+						"gguf"
+					],
+					"default": "auto",
+					"description": "%configuration.generationEngine%"
+				},
+				"terramind.ggufModelPath": {
+					"type": "string",
+					"default": "",
+					"description": "%configuration.ggufModelPath%"
+				},
 				"terramind.analysis.runExternalTools": {
 					"type": "boolean",
 					"default": false,

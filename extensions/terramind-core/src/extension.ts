@@ -533,6 +533,7 @@ async function requestGeneration(
 	workspaceTrusted: boolean
 ): Promise<GenerationResult> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
+	const engine = vscode.workspace.getConfiguration('terramind').get<string>('generationEngine', 'auto');
 	const response = await fetch(`${analyzerUrl}/v1/generate`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -542,6 +543,7 @@ async function requestGeneration(
 			connectivity,
 			constraints,
 			model,
+			engine,
 			workspace_path: workspacePath,
 			run_external_tools: runExternalTools,
 			workspace_trusted: workspaceTrusted
@@ -564,6 +566,7 @@ async function requestRepair(
 	workspaceTrusted: boolean
 ): Promise<GenerationResult> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
+	const engine = vscode.workspace.getConfiguration('terramind').get<string>('generationEngine', 'auto');
 	const response = await fetch(`${analyzerUrl}/v1/repair`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -572,6 +575,7 @@ async function requestRepair(
 			findings,
 			instructions,
 			model,
+			engine,
 			workspace_path: workspacePath,
 			run_external_tools: runExternalTools,
 			workspace_trusted: workspaceTrusted
