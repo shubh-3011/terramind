@@ -472,3 +472,26 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The general rules are deliberately scoped per parsed document; there is no cross-file module expansion, so some project-wide absence checks (for example a backend defined in a separate file) can still be reported per file.
 - Azure/GCP reliability and maintainability are not yet rubric-scored (only their security findings are attributed); their ratings show those dimensions as `insufficient_information`.
 - Self-trained generation remains a research artifact. The product recommendation is an existing pre-trained code model; see `docs/MODEL_STRATEGY.md`.
+
+### 2026-10-01 - Self-hosted model pipeline: multi-cloud corpus and working training loop
+
+**Implemented and verified locally**
+
+- Prepared a **multi-cloud** supervised-fine-tuning corpus from the pinned `SASVAAI/terraform-multicloud` revision (`--provider-family all`): **72,150 train / 3,825 validation rows** across AWS (45,790), GCP (8,680), Azure (8,560), Kubernetes (4,521), OCI, IBM, Alibaba, Cloudflare, DigitalOcean, Docker, GitHub, OpenStack, Vault, vSphere, and Yandex. License allowlisting, HCL-parse filtering, repository-disjoint splits, and per-row attribution are retained; prepared text stays in the git-ignored `.build/`.
+- Added a default training preset on **`Qwen/Qwen2.5-Coder-1.5B-Instruct`** (Apache-2.0, pinned revision `2e1fd397ee46e1388853d2af2c993145b0f1098a`) so a redistributable Terraform adapter can be trained and shipped. Presets, checkpoint save/resume, `--dry-run`, and configurable LoRA/hyperparameters are in `train_sft.py`.
+- Fixed a **CPU-fallback bug**: the PEFT model was never moved to CUDA, so training ran at ~25 s/step. An explicit `.to("cuda")` restored GPU execution.
+- Fixed a **Windows stall**: `dataloader_pin_memory=True` made the Hugging Face `Trainer` run at 16-25 s/step with the GPU starved at ~18 W; the same model computes a step in ~2 s directly. Replaced `Trainer` with an explicit training loop (gradient accumulation, cosine schedule, evaluation, checkpointing, metadata) and added opt-in per-phase timing (`TERRAMIND_TRAIN_DEBUG=1`).
+- Bounded memory: sample raw JSONL lines before parsing and store encoded rows as `int32` numpy arrays instead of Python int lists.
+- Added a bundled **GGUF (llama.cpp) generation engine** with per-request and env engine selection (`auto`/`ollama`/`transformers`/`gguf`), an export/quantization CLI (`export_gguf.py`) that builds merge → f16 → Q4_K_M commands and writes a model manifest with SHA-256, plus `docs/MODEL_CARD.md` and `docs/OPEN_SOURCE.md` for licensing/attribution and no-Ollama deployment. The extension exposes `terramind.generationEngine` and `terramind.ggufModelPath`.
+
+**Validation performed**
+
+- Analyzer suite: **113 passing**; extension TypeScript check clean.
+- Measured on the RTX 4060 (8 GB): forward ~0.7 s and backward ~1.4 s per 512-token example with LoRA (batch 1; batch 4 caused memory-thrash spikes). A 40-example debug run completed a full epoch. A full fine-tune over 10,000 multi-cloud examples was started; results are reported in a later entry.
+- Committed to `testing`/`main`: `b8d082fd`, `5bacb7ed`, `91db5256`, `36e55c3f`, `f6491c6d`, `4bc40353`, `098c1c25`.
+
+**Not completed / risks**
+
+- The 8 GB GPU forces batch size 1, so wall-clock training time scales with the number of examples (~2 s each). Larger batches spill VRAM and stall.
+- No trained adapter is claimed yet; loss is not a validity measure, and the shipped model must still be gated by the deterministic analyzer and optional provider validation.
+- GGUF conversion requires external `llama.cpp` tools (`convert_hf_to_gguf.py`, `llama-quantize`), supplied via `TERRAMIND_LLAMA_CPP_DIR` or `PATH`.
