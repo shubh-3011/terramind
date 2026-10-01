@@ -27,6 +27,21 @@ attribution checklist, see [OPEN_SOURCE.md](OPEN_SOURCE.md).
 The GGUF is **not committed to Git**. It is large (940 MB) and must be hosted as a
 GitHub release asset. See [OPEN_SOURCE.md](OPEN_SOURCE.md) for how it is published.
 
+## 0. Built-in (no configuration)
+
+TerraMind discovers its own model automatically. If a `.gguf` file is present in any of
+these locations (first match wins) and `TERRAMIND_GENERATION_ENGINE` is `auto` (the default),
+the analyzer selects the GGUF engine with **no environment variables and no Ollama**:
+
+1. `TERRAMIND_GGUF_MODEL` (an explicit file path; always wins)
+2. `TERRAMIND_MODELS_DIR` if set
+3. `services/analyzer-api/models/` (next to the analyzer - the recommended install location)
+4. `<repository>/models/`
+5. `~/.terramind/models/` (`%USERPROFILE%\.terramind\models` on Windows)
+
+So a packaged TerraMind just needs the `.gguf` dropped into `models/`; nothing else to configure.
+Set `TERRAMIND_GENERATION_ENGINE=ollama` (or `transformers`) to override the choice.
+
 ## 1. Get the GGUF
 
 Pick one of the following.
