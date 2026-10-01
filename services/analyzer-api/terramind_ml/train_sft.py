@@ -121,20 +121,39 @@ def encode_conversation(tokenizer: Any, messages: list[dict[str, str]], max_leng
 
 
 def _read_jsonl(path: Path, limit: int | None, seed: int) -> list[dict[str, Any]]:
-    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if limit is not None and len(rows) > limit:
-        random.Random(seed).shuffle(rows)
-        rows = rows[:limit]
-    return rows
+    """Sample lines *before* parsing so a large corpus does not blow up memory.
+
+    Parsing every row of a 70k-row corpus into dictionaries only to keep a small
+    subset was pushing the process into system-memory paging, which starved the
+    GPU. We keep raw lines (cheap) and parse only the selected subset.
+    """
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if limit is not None and len(lines) > limit:
+        indices = list(range(len(lines)))
+        random.Random(seed).shuffle(indices)
+        lines = [lines[index] for index in indices[:limit]]
+    return [json.loads(line) for line in lines]
 
 
 def encode_rows(
     tokenizer: Any, path: Path, limit: int | None, max_length: int, seed: int,
-) -> list[dict[str, list[int]]]:
-    """Read, subset, and chat-template-encode a JSONL split, dropping unusable rows."""
+) -> list[dict[str, Any]]:
+    """Read, subset, and chat-template-encode a JSONL split, dropping unusable rows.
+
+    Encoded rows are stored as ``int32`` numpy arrays: a Python list of ints costs
+    ~28 bytes per token, which made tens of thousands of rows consume gigabytes of
+    RAM and triggered paging. ``int32`` is ~7x smaller and is what the collator
+    needs anyway.
+    """
+    import numpy as np  # only needed on the real training path
+
     source = _read_jsonl(path, limit, seed)
-    encoded = [encode_conversation(tokenizer, row["messages"], max_length) for row in source]
-    return [item for item in encoded if item is not None]
+    encoded: list[dict[str, Any]] = []
+    for row in source:
+        item = encode_conversation(tokenizer, row["messages"], max_length)
+        if item is not None:
+            encoded.append({key: np.asarray(value, dtype=np.int32) for key, value in item.items()})
+    return encoded
 
 
 def summarize_encoding(
@@ -285,28 +304,33 @@ def main() -> int:
     print(f"Training device: {next(model.parameters()).device}")
 
     class PaddedDataset(torch.utils.data.Dataset):
-        def __init__(self, rows: list[dict[str, list[int]]]):
+        def __init__(self, rows: list[dict[str, Any]]):
             self.rows = rows
 
         def __len__(self) -> int:
             return len(self.rows)
 
-        def __getitem__(self, index: int) -> dict[str, list[int]]:
+        def __getitem__(self, index: int) -> dict[str, Any]:
             return self.rows[index]
 
-    def collate(batch: list[dict[str, list[int]]]) -> dict[str, torch.Tensor]:
+    def collate(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
+        import numpy as np
+
         width = max(len(item["input_ids"]) for item in batch)
         pad_id = int(tokenizer.pad_token_id)
         input_ids, masks, labels = [], [], []
         for item in batch:
-            padding = width - len(item["input_ids"])
-            input_ids.append(item["input_ids"] + [pad_id] * padding)
-            masks.append(item["attention_mask"] + [0] * padding)
-            labels.append(item["labels"] + [-100] * padding)
+            ids = np.asarray(item["input_ids"], dtype=np.int32)
+            attention = np.asarray(item["attention_mask"], dtype=np.int32)
+            target = np.asarray(item["labels"], dtype=np.int32)
+            padding = width - len(ids)
+            input_ids.append(np.pad(ids, (0, padding), constant_values=pad_id))
+            masks.append(np.pad(attention, (0, padding), constant_values=0))
+            labels.append(np.pad(target, (0, padding), constant_values=-100))
         return {
-            "input_ids": torch.tensor(input_ids, dtype=torch.long),
-            "attention_mask": torch.tensor(masks, dtype=torch.long),
-            "labels": torch.tensor(labels, dtype=torch.long),
+            "input_ids": torch.as_tensor(np.stack(input_ids), dtype=torch.long),
+            "attention_mask": torch.as_tensor(np.stack(masks), dtype=torch.long),
+            "labels": torch.as_tensor(np.stack(labels), dtype=torch.long),
         }
 
     training_args = TrainingArguments(
