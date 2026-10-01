@@ -114,15 +114,20 @@ and - when explicitly opted in with a pre-initialized provider cache - provider-
 | Train loss | 0.475 |
 | Eval loss | 0.470 |
 | Training wall-clock | ~2.75 hours |
-| Held-out HCL parse rate | 8 / 8 |
+| Held-out HCL parse rate (early 8-example smoke) | 8 / 8 |
+| Held-out HCL parse rate (12-example eval, after auto-declare) | 9 / 12 (75%) |
+| Held-out `terraform validate` acceptance (12-example eval, AWS provider 6.66.0) | 6 / 12 (50%) |
 | Quantization | `Q4_K_M` |
 | GGUF SHA-256 | `6917bf571e822b5739b671509c37e32c66800c78af9d54c6546326e13fec7906` |
 
-**Read these honestly.** The 8/8 result is an **HCL parse rate** on a small held-out sample:
-the output is syntactically valid HCL. It is **not** provider-schema acceptance, not a
-correctness or security result, and not a user-intent benchmark. Train/eval loss describes
-corpus fit only. Quantization was measured on this `Q4_K_M` build; do not assume higher-precision
-metrics transfer to the shipped file. Human review and the deterministic TerraMind gates
+**Read these honestly.** The parse rates are **HCL syntax** results (8/8 on an easy smoke set;
+75% on a broader 12-example set), and the 50% figure is real `terraform validate` acceptance —
+neither is semantic correctness, security, cost, or intent fidelity. A deterministic
+post-processor declares undeclared `var.*` references (`checks.auto_declared_variables`), which
+raised parse 67%->75% and provider acceptance 42%->50%. The model can still ignore a stated
+constraint (for example it may emit a broad security-group CIDR despite "no public SSH"),
+reference the wrong argument name, or emit unparsable output after the single repair attempt.
+Train/eval loss describes corpus fit only. Human review and the deterministic TerraMind gates
 (parsing, static rules, optional provider `terraform validate`) still decide whether a draft is
 usable.
 
