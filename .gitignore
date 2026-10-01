@@ -34,6 +34,17 @@ runs/
 mlruns/
 tmp/
 
+# TerraMind local model weights (build artifacts; never commit them).
+# Host the GGUF as a GitHub release asset instead. See docs/OPEN_SOURCE.md.
+# A blanket *.bin is intentionally omitted because the Code-OSS tree tracks
+# .bin test fixtures under extensions/**/fixtures.
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
 # No trailing slash, so a symlinked node_modules is ignored too
 node_modules
 .tmp/

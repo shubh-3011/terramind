@@ -1,4 +1,4 @@
-# TerraMind Terraform Generator — Model Card
+# TerraMind Terraform Generator - Model Card
 
 This is the model card for the optional, locally hosted **Terraform generation** model that
 ships with TerraMind. It is a small instruction-tuned code model, exported to GGUF and run
@@ -19,18 +19,23 @@ lives in [GENERATIVE_TRAINING.md](GENERATIVE_TRAINING.md) and
 | Artifact name | TerraMind Terraform Generator (`terramind-terraform`) |
 | Base model | `Qwen/Qwen2.5-Coder-1.5B-Instruct` |
 | Base license | Apache-2.0 |
-| Base revision | `<PINNED_REVISION>` — replace with the upstream commit before release |
+| Base revision | `2e1fd397ee46e1388853d2af2c993145b0f1098a` |
 | Fine-tuning method | LoRA supervised fine-tuning; assistant-response tokens only |
-| Training task | Natural-language request → reviewable Terraform HCL |
+| Training task | Natural-language request -> reviewable Terraform HCL |
 | Distribution format | GGUF (`Q4_K_M` by default), produced by `terramind_ml.export_gguf` |
+| Release asset | `terramind-qwen2.5-coder-1.5b-terraform-merged-Q4_K_M.gguf` |
+| Asset size | 940 MB (986,048,192 bytes; 940.37 MiB) |
+| SHA-256 | `6917bf571e822b5739b671509c37e32c66800c78af9d54c6546326e13fec7906` |
+| Quantization | `Q4_K_M` |
 | Runtime | local `llama-cpp-python` (llama.cpp) via `TERRAMIND_GGUF_MODEL`; no Ollama required |
 | Language(s) | English prompts; Terraform HCL output (HCL2) |
 | Developer | the TerraMind project |
 
-Pin `<PINNED_REVISION>` to a specific upstream commit before publishing a release. Do not
-advertise a moving branch (`main`) as the base: it is not reproducible and the license/text can
-change without notice. Record the pinned value in the release manifest produced by the export
-CLI.
+The base is pinned to the upstream commit
+`2e1fd397ee46e1388853d2af2c993145b0f1098a`. Do not advertise a moving branch (`main`) as the
+base: it is not reproducible and the license/text can change without notice. The pinned value is
+recorded in the release manifest produced by the export CLI; see
+[RUNNING_LOCAL_MODEL.md](RUNNING_LOCAL_MODEL.md) for end-user setup.
 
 ## Intended use
 
@@ -41,8 +46,8 @@ CLI.
 - **Review and repair assistance** as a starting point for a human who then edits, validates,
   and applies the configuration themselves.
 
-The built-in TerraMind flow is: generate a draft → parse the HCL → run static checks and
-optional provider-schema validation → show the user a diff → **write nothing until the user
+The built-in TerraMind flow is: generate a draft -> parse the HCL -> run static checks and
+optional provider-schema validation -> show the user a diff -> **write nothing until the user
 explicitly saves the draft**. The model only proposes; it never applies.
 
 ### Intended users
@@ -76,7 +81,7 @@ tooling (`terraform fmt`, `terraform validate`, provider schemas, plan review) b
 | Filtering | AWS provider-family rows only; HCL parse check; source-license allowlist |
 | Provenance files | `train.jsonl`, `validation.jsonl`, `ATTRIBUTION.csv`, `manifest.json` |
 
-The corpus is a set of natural-language → HCL examples. **Its prompts are model-written
+The corpus is a set of natural-language -> HCL examples. **Its prompts are model-written
 back-translations of the source HCL**, so the model can inherit the teacher's mistakes as easily
 as its correct patterns. Individual rows retain their **source-repository licenses** (for example
 MIT, Apache-2.0, BSD, ISC). The preparation script keeps only rows whose source license is on an
@@ -98,7 +103,28 @@ Provider-valid evaluation (for example an IaC-Eval-style held-out set that runs
 `terraform validate`/provider schemas) is the only defensible way to judge whether a draft is
 acceptable. TerraMind ships a generation evaluator
 (`terramind_ml.evaluate_generation`) that measures HCL parse rate, resource-type overlap, latency,
-and — when explicitly opted in with a pre-initialized provider cache — provider-schema acceptance.
+and - when explicitly opted in with a pre-initialized provider cache - provider-schema acceptance.
+
+### Measured results (this release)
+
+| Field | Value |
+| --- | --- |
+| Training examples | 20,000 multi-cloud Terraform examples |
+| Optimizer steps | 2,395 |
+| Train loss | 0.475 |
+| Eval loss | 0.470 |
+| Training wall-clock | ~2.75 hours |
+| Held-out HCL parse rate | 8 / 8 |
+| Quantization | `Q4_K_M` |
+| GGUF SHA-256 | `6917bf571e822b5739b671509c37e32c66800c78af9d54c6546326e13fec7906` |
+
+**Read these honestly.** The 8/8 result is an **HCL parse rate** on a small held-out sample:
+the output is syntactically valid HCL. It is **not** provider-schema acceptance, not a
+correctness or security result, and not a user-intent benchmark. Train/eval loss describes
+corpus fit only. Quantization was measured on this `Q4_K_M` build; do not assume higher-precision
+metrics transfer to the shipped file. Human review and the deterministic TerraMind gates
+(parsing, static rules, optional provider `terraform validate`) still decide whether a draft is
+usable.
 
 ### Caveats
 
@@ -111,7 +137,7 @@ and — when explicitly opted in with a pre-initialized provider cache — provi
 - **Small held-out samples prove plumbing, not quality.** Report parse rate, provider acceptance,
   and latency for the exact base revision, quant type, and hardware; do not generalize from a
   handful of examples.
-- **Quantization changes behaviour.** Measure the specific GGUF (`Q4_K_M`, `Q5_K_M`, …) you ship;
+- **Quantization changes behaviour.** Measure the specific GGUF (`Q4_K_M`, `Q5_K_M`, ...) you ship;
   do not assume full-precision metrics transfer.
 
 No quality claim for this model is established by its presence on this card. Treat it as an
@@ -156,11 +182,11 @@ Export a merged model (no GPU needed):
 ```powershell
 # From services/analyzer-api
 .\.venv\Scripts\python.exe -m terramind_ml.export_gguf `
-  --merged ..\..\.build\terramind-qwen3-terraform-merged `
-  --out-dir ..\..\.build\gguf `
+  --merged ..\..\.build\terramind-qwen2.5-coder-1.5b-terraform-merged `
+  --out-dir ..\..\.build\terramind-gguf `
   --quant Q4_K_M `
   --base-model Qwen/Qwen2.5-Coder-1.5B-Instruct `
-  --base-revision <PINNED_REVISION> `
+  --base-revision 2e1fd397ee46e1388853d2af2c993145b0f1098a `
   --license Apache-2.0
 ```
 
@@ -168,15 +194,15 @@ Preview the exact commands and manifest without running anything:
 
 ```powershell
 .\.venv\Scripts\python.exe -m terramind_ml.export_gguf `
-  --merged ..\..\.build\terramind-qwen3-terraform-merged `
-  --out-dir ..\..\.build\gguf --dry-run
+  --merged ..\..\.build\terramind-qwen2.5-coder-1.5b-terraform-merged `
+  --out-dir ..\..\.build\terramind-gguf --dry-run
 ```
 
 Run it in TerraMind by pointing the analyzer at the GGUF:
 
 ```powershell
-python -m pip install llama-cpp-python
-$env:TERRAMIND_GGUF_MODEL = "C:\path\to\terramind-terraform-Q4_K_M.gguf"
+python -m pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+$env:TERRAMIND_GGUF_MODEL = "C:\path\to\terramind-qwen2.5-coder-1.5b-terraform-merged-Q4_K_M.gguf"
 $env:TERRAMIND_GENERATION_ENGINE = "gguf"
 ```
 
