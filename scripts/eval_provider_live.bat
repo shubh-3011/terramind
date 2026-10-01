@@ -2,7 +2,7 @@
 title TerraMind - Provider validity evaluation (live progress)
 set HF_HUB_DISABLE_SYMLINKS_WARNING=1
 set TERRAMIND_GENERATION_ENGINE=gguf
-set TERRAMIND_GGUF_MODEL=C:\Users\shubh\Downloads\terramind\.build\terramind-gguf\terramind-qwen2.5-coder-1.5b-terraform-merged-Q4_K_M.gguf
+rem Leave TERRAMIND_GGUF_MODEL unset so the analyzer auto-discovers models\*.gguf
 set TERRAMIND_GGUF_MAX_TOKENS=1024
 set TERRAMIND_TERRAFORM_PATH=C:\Users\shubh\Downloads\terramind\.build\tools\terraform-1.16.4\terraform.exe
 set TERRAMIND_EVAL_COUNT=12
