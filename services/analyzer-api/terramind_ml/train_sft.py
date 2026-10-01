@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 from pathlib import Path
 from typing import Any
@@ -333,7 +334,9 @@ def main() -> int:
         remove_unused_columns=False,
         dataloader_num_workers=0,
         use_cpu=False,
-        dataloader_pin_memory=True,
+        # Pinned memory can be pathologically slow on Windows/WDDM and can add
+        # tens of seconds per step, so keep it off unless explicitly requested.
+        dataloader_pin_memory=os.environ.get("TERRAMIND_TRAIN_PIN_MEMORY", "0") == "1",
         tf32=True,
     )
     trainer = Trainer(
