@@ -495,3 +495,19 @@ This file records real work, decisions, tests, and blockers and is included in t
 - The 8 GB GPU forces batch size 1, so wall-clock training time scales with the number of examples (~2 s each). Larger batches spill VRAM and stall.
 - No trained adapter is claimed yet; loss is not a validity measure, and the shipped model must still be gated by the deterministic analyzer and optional provider validation.
 - GGUF conversion requires external `llama.cpp` tools (`convert_hf_to_gguf.py`, `llama-quantize`), supplied via `TERRAMIND_LLAMA_CPP_DIR` or `PATH`.
+
+### 2026-10-01 - Fine-tuned Terraform generator trained and evaluated
+
+**Completed**
+
+- Trained a LoRA adapter on **20,000 multi-cloud Terraform examples** (Qwen2.5-Coder-1.5B-Instruct base, r=16/alpha=32, 512-token context, 1 epoch) on the RTX 4060 in **~2.75 hours**. Measured: `train_loss` **0.475**, `eval_loss` **0.470** over 2,395 optimizer steps.
+- Merged the adapter into the base and produced a local 2.9 GB full model at `.build/terramind-qwen2.5-coder-1.5b-terraform-merged`.
+- Ran a held-out generation evaluation (`scripts/eval_model.py`): **8/8 (100%) of generated configurations parsed as HCL**, at roughly 16 s/example, versus the earlier Qwen3-0.6B/1.7B adapters that were largely unparsable or provider-invalid.
+- Added visible-console launchers with live progress counters and logs: `scripts/train_model_live.bat`, `scripts/eval_model_live.bat`, `scripts/export_gguf_live.bat` (to `.build/*-log.txt`).
+
+**Interpretation / limits**
+
+- 100% **parse** rate is not provider-schema validity, semantic correctness, security, cost, or availability. `terraform validate` (opt-in, pre-initialized cache) and the deterministic analyzer still gate every draft, and the model ignores some constraints (for example it may still emit broad security-group CIDRs).
+- The measure is 8 examples; a larger provider-valid benchmark remains necessary before any quality claim.
+
+**Commits:** `af0400f5` (eval tooling) and the GGUF-export launcher added alongside.
