@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import type { AnalysisFinding, AnalysisResult, RatingDimension, Recommendation, ServiceRating } from './extension';
 
@@ -385,7 +384,10 @@ function severityClass(severity: 'error' | 'warning' | 'information'): 'error' |
 }
 
 function getNonce(): string {
-	return crypto.randomBytes(16).toString('hex');
+	// Web-safe: works in the browser workbench and in Node/Electron.
+	const bytes = new Uint8Array(16);
+	globalThis.crypto.getRandomValues(bytes);
+	return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function escapeHtml(value: string): string {

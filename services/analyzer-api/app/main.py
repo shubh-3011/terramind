@@ -36,6 +36,18 @@ from app.recommendations import build_recommendations
 from app.workspace_guard import allowed_roots, resolve_workspace
 
 app = FastAPI(title="TerraMind Analyzer", version="0.1.0")
+
+# The TerraMind workbench also ships as a web build (browser) served from
+# localhost; the browser enforces CORS, so allow loopback origins only. The
+# service must still stay bound to loopback.
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 _TRANSFORMERS_GENERATION_LOCK = threading.Lock()
 MAX_GENERATION_REPAIRS = 1
 
@@ -354,6 +366,9 @@ def _discover_gguf_model() -> str | None:
     explicit = os.environ.get("TERRAMIND_GGUF_MODEL", "").strip()
     if explicit:
         return explicit
+    # Tests and callers that want a specific engine disable the bundled-model scan.
+    if os.environ.get("TERRAMIND_DISABLE_BUNDLED_MODEL", "").strip() in {"1", "true", "yes"}:
+        return None
     for directory in _gguf_search_dirs():
         try:
             if directory.is_dir():

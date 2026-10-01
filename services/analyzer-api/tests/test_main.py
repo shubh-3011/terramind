@@ -2,11 +2,21 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch
 import json
 
+import pytest
+
 from app.main import _transformers_max_new_tokens, app
 from terramind_ml.features import extract_features
 import hcl2
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_bundled_model(monkeypatch):
+    """Keep tests deterministic: do not let a locally installed GGUF change the
+    default engine. Tests that exercise GGUF set TERRAMIND_GGUF_MODEL explicitly."""
+    monkeypatch.setenv("TERRAMIND_DISABLE_BUNDLED_MODEL", "1")
+    monkeypatch.delenv("TERRAMIND_GGUF_MODEL", raising=False)
 
 
 def test_transformers_generation_token_limit_is_bounded_and_configurable():

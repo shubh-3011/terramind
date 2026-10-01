@@ -25,6 +25,12 @@ from app.main import _resolve_engine, app
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_bundled_model(monkeypatch):
+    """Do not let a locally installed GGUF change engine resolution in tests."""
+    monkeypatch.setenv("TERRAMIND_DISABLE_BUNDLED_MODEL", "1")
+
+
 # --- (a) engine resolution precedence -------------------------------------
 
 
