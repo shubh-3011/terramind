@@ -24,6 +24,9 @@ from pydantic import BaseModel, Field
 from terramind_ml.features import expand_dynamic_ingress, extract_features
 from terramind_ml.predictor import predict_risk
 
+from app.recommendations import build_recommendations
+from app.workspace_guard import allowed_roots, resolve_workspace
+
 app = FastAPI(title="TerraMind Analyzer", version="0.1.0")
 _TRANSFORMERS_GENERATION_LOCK = threading.Lock()
 MAX_GENERATION_REPAIRS = 1
@@ -89,6 +92,7 @@ class GenerateResponse(BaseModel):
     validation_scope: str
     findings: list[Finding]
     service_ratings: list[dict[str, Any]]
+    recommendations: list[dict[str, Any]] = []
     checks: dict[str, str]
 
 
@@ -98,6 +102,7 @@ class AnalyzeResponse(BaseModel):
     parsed_file_count: int
     findings: list[Finding]
     service_ratings: list[dict[str, Any]]
+    recommendations: list[dict[str, Any]] = []
     risk_prediction: dict[str, Any] | None
     risk_prediction_reason: str | None
     checks: dict[str, str]
@@ -112,9 +117,7 @@ def health() -> dict[str, str]:
 @app.post("/v1/analyze", response_model=AnalyzeResponse)
 def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
     """Parse Terraform HCL and report a deliberately small first set of rules."""
-    workspace = Path(request.workspace_path).expanduser().resolve()
-    if not workspace.is_dir():
-        raise HTTPException(status_code=400, detail="workspace_path must be an existing directory")
+    workspace = resolve_workspace(request.workspace_path)
 
     terraform_files = _discover_terraform_files(workspace)
 
@@ -200,6 +203,7 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
         parsed_file_count=parsed_file_count,
         findings=findings,
         service_ratings=service_ratings,
+        recommendations=build_recommendations(findings),
         risk_prediction=risk_prediction,
         risk_prediction_reason=risk_prediction_reason,
         checks={
@@ -431,6 +435,10 @@ def _validated_generation_response(
     run_external_tools: bool = False,
     workspace_trusted: bool = False,
 ) -> GenerateResponse:
+    if workspace_path is not None and allowed_roots():
+        # Reject an out-of-allowlist workspace before provider validation copies or
+        # executes anything from it. A 403 raised here propagates as a hard error.
+        workspace_path = str(resolve_workspace(workspace_path))
     if not isinstance(terraform, str) or not terraform.strip():
         raise HTTPException(status_code=502, detail="The configured local model returned no Terraform draft")
     terraform = _strip_hcl_fence(terraform.strip())
@@ -476,6 +484,7 @@ def _validated_generation_response(
         validation_scope=validation_scope,
         findings=findings,
         service_ratings=service_ratings,
+        recommendations=build_recommendations(findings),
         checks=checks,
     )
 
@@ -633,6 +642,20 @@ def _static_security_findings(document: dict[str, Any], source: str, file: str) 
             "IAM policy contains a wildcard resource target. Confirm the policy scope is intentionally broad.",
             line=_line_containing(source, re.compile(r"\bresources?\b")),
             recommendation="Restrict Resource to the smallest set of ARNs required by the workload.",
+        ))
+
+    # Extensible registry of additional deterministic AWS rules (app/rules/*).
+    # Rules return metadata-free hits; the rule supplies severity and guidance.
+    from app.rules import evaluate_rules
+
+    for rule, hit in evaluate_rules(document, source, file):
+        findings.append(_finding(
+            file,
+            rule.rule_id,
+            hit.severity if hit.severity in {"error", "warning", "information"} else rule.severity,  # type: ignore[arg-type]
+            hit.message,
+            line=hit.line,
+            recommendation=hit.recommendation or rule.recommendation,
         ))
     return findings
 
