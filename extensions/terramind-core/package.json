@@ -17,7 +17,8 @@
 		"onCommand:terramind.generateInfrastructure",
 		"onCommand:terramind.generateInfrastructureWizard",
 		"onCommand:terramind.proposeRepair",
-		"onCommand:terramind.openDashboard"
+		"onCommand:terramind.openDashboard",
+		"onCommand:terramind.openReport"
 	],
 	"main": "./out/extension",
 	"scripts": {
@@ -53,6 +54,11 @@
 				"command": "terramind.openDashboard",
 				"title": "%command.openDashboard%",
 				"category": "TerraMind"
+			},
+			{
+				"command": "terramind.openReport",
+				"title": "%command.openReport%",
+				"category": "TerraMind"
 			}
 		],
 		"menus": {
@@ -81,6 +87,12 @@
 				}
 			]
 		},
+		"viewsWelcome": [
+			{
+				"view": "terramind.dashboard",
+				"contents": "%viewsWelcome.dashboard%"
+			}
+		],
 		"configuration": {
 			"title": "%configuration.title%",
 			"properties": {

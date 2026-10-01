@@ -5,8 +5,9 @@
 
 import * as vscode from 'vscode';
 import { openGenerateWizard } from './generateView';
+import { showReport } from './reportView';
 
-interface AnalysisResult {
+export interface AnalysisResult {
 	readonly terraform_file_count: number;
 	readonly parsed_file_count: number;
 	readonly status: string;
@@ -18,7 +19,7 @@ interface AnalysisResult {
 	readonly recommendations?: readonly Recommendation[];
 }
 
-interface RatingDimension {
+export interface RatingDimension {
 	readonly score: number | null;
 	readonly status: string;
 	readonly summary: string;
@@ -28,13 +29,13 @@ interface RatingDimension {
 	readonly limitations?: readonly string[];
 }
 
-interface ServiceRating {
+export interface ServiceRating {
 	readonly service: string;
 	readonly resource_count: number;
 	readonly dimensions: Readonly<Record<string, RatingDimension>>;
 }
 
-interface Recommendation {
+export interface Recommendation {
 	readonly rule_id: string;
 	readonly title: string;
 	readonly severity: 'error' | 'warning' | 'information';
@@ -57,7 +58,7 @@ interface GenerationResult {
 	readonly checks?: Readonly<Record<string, string>>;
 }
 
-interface AnalysisFinding {
+export interface AnalysisFinding {
 	readonly id: string;
 	readonly source: string;
 	readonly rule_id: string;
@@ -140,8 +141,15 @@ export function activate(context: vscode.ExtensionContext): void {
 	const dashboard = new TerraMindDashboardProvider();
 	context.subscriptions.push(diagnostics, vscode.window.registerTreeDataProvider('terramind.dashboard', dashboard));
 
+	let lastReport: { readonly workspaceName: string; readonly report: AnalysisResult } | undefined;
+
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.openDashboard', async () => {
 		await vscode.commands.executeCommand('workbench.view.extension.terramind');
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('terramind.openReport', () => {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		showReport(context, lastReport?.workspaceName ?? workspaceFolder?.name ?? vscode.l10n.t('No workspace'), lastReport?.report);
 	}));
 
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.analyzeWorkspace', async () => {
@@ -219,6 +227,12 @@ export function activate(context: vscode.ExtensionContext): void {
 					description: recommendation.title || recommendation.message
 				}));
 				dashboard.refresh(vscode.l10n.t('Connected'), workspaceStatus, riskStatus, ratingItems, recommendationItems);
+				lastReport = { workspaceName: workspaceFolder.name, report: result };
+				try {
+					showReport(context, workspaceFolder.name, result);
+				} catch (reportError) {
+					output.appendLine(`Could not render the TerraMind report view: ${getErrorMessage(reportError)}`);
+				}
 				const errors = result.findings.filter(finding => finding.severity === 'error').length;
 				const warnings = result.findings.filter(finding => finding.severity === 'warning').length;
 				output.appendLine(`Analysis status=${result.status}; parsed=${result.parsed_file_count}/${result.terraform_file_count}; errors=${errors}; warnings=${warnings}`);
@@ -247,6 +261,7 @@ export function activate(context: vscode.ExtensionContext): void {
 					result.parsed_file_count, result.terraform_file_count, errors, warnings
 				));
 			} catch (error) {
+				// Leave an already-open report panel untouched so a failed run neither crashes nor clears the last report.
 				diagnostics.clear();
 				dashboard.refresh(vscode.l10n.t('Unavailable'), vscode.l10n.t('Analysis Not Run'), vscode.l10n.t('Not Available'));
 				output.appendLine(`Analyzer request failed: ${getErrorMessage(error)}`);
