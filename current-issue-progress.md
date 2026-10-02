@@ -34,7 +34,7 @@ Both talk to the same local **FastAPI analyzer** at `http://127.0.0.1:8000`.
 | Deterministic **scaffolder** | **Works** — inventory → valid, secure AWS Terraform with no model (0.1–0.5 s) |
 | Local AI model | Fine-tuned `Qwen2.5-Coder-1.5B` (Apache-2.0), **940 MB Q4_K_M GGUF**, auto-discovered, runs on the **GPU** via llama.cpp (~100 tok/s) |
 | Generation progress | Real percentage (`0–100 %`) via a job API + cancellable notification |
-| Tests | **157 passing** (analyzer/data/training/eval); extension TypeScript check clean |
+| Tests | **171 passing** (analyzer/data/training/eval); extension TypeScript check clean |
 | Git | Everything committed to `main` + `testing` |
 
 **Overall estimate:** roughly **70–75 %** of the agreed MVP scope by milestone coverage — a
@@ -132,6 +132,10 @@ Transformers → Ollama). Explicit `scaffold` / `gguf` / `ollama` / `transformer
    bucket) but produces little or loops on large architectures (e.g. 5 VPCs + Transit Gateway).
    Measured on 12 held-out examples: **83 % parse, 42 % pass `terraform validate`** — and the
    parser accepts some deprecated/incorrect constructs. Treat AI output as a **draft only**.
+   A retrain on a larger mix (8,000 scaffold-generated + 12,000 security-filtered multi-cloud
+   examples, 1 epoch, 6 h on the dev GPU) was **not an improvement**: **67 % parse / 33 % pass**
+   on the same 12 examples (v2 re-run in the same session: 83 % / 33 %). **v2 therefore stays
+   the bundled model.** More *data* is not the lever here — base-model capacity is.
 2. Because of (1), the **deterministic scaffolder** is the recommended path for structured
    requests; the model is for freeform/edge cases.
 3. Generation is **stochastic** — results vary run to run; truncated output is trimmed, which
@@ -164,8 +168,11 @@ Transformers → Ollama). Explicit `scaffold` / `gguf` / `ollama` / `transformer
 
 1. **Make the desktop launch reproducible**: rebuild the package from the current source so the
    scaffolder, save-flow fix, and timeouts are in the shipped `.exe`.
-2. **Improve the model** (optional): train on more reviewed, provider-valid examples, or move to a
-   larger base (`Qwen2.5-Coder-7B` Q4) on a bigger GPU.
+2. **Improve the model on a bigger GPU (the real lever).** The 1.5 B has hit its ceiling — a
+   larger training mix *reduced* its parse rate, so extra data is not the fix. Fine-tune
+   **`Qwen2.5-Coder-7B-Instruct`** (Apache-2.0) on the college DGX with `scripts/dgx_train.sh 7b`,
+   export **Q4_K_M (~4.4 GB)**, and ship it alongside the 1.5 B; it fits the dev RTX 4060 (8 GB)
+   at ~25–45 tok/s and needs no change to the runtime. See `docs/DGX_TRAINING.md`.
 3. **Broaden the scaffolder** (Azure/GCP, RDS, EKS) and add `terraform validate` to the
    scaffolder test suite.
 4. **Unblock CI** (GitHub billing) so packaging and checks run and `main` can be merged normally.
