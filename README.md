@@ -27,7 +27,9 @@ Two ways to run the workbench:
    scripts\web_live.bat           # http://localhost:8080
    ```
    Open `http://localhost:8080` (use Edge or Chrome for `File > Open Folder`; Brave blocks the File System Access API). In any browser, run **TerraMind: Analyze Demo Fixture** from the Command Palette to analyze a local fixture without a folder picker.
-2. **Desktop app.** Build with `npm run gulp vscode-win32-x64-min` (produces `VSCode-win32-x64\TerraMind.exe`). Note: on this development machine the desktop window currently does not open (a startup hang, documented in [PROGRESS.md](PROGRESS.md)); use the browser workbench.
+2. **Desktop app (native Windows).** Build with `npm run gulp vscode-win32-x64-min` (produces `VSCode-win32-x64\TerraMind.exe`), or run the development build with `scripts\code.bat .`. The window opens with the TerraMind workbench, activity-bar panel, diagnostics, and webviews.
+
+Generation runs locally on the GPU when a CUDA `llama-cpp-python` build is installed (`n_gpu_layers` defaults to -1) and reports a live progress percentage.
 
 The analyzer auto-discovers a bundled GGUF under `services/analyzer-api/models/` and needs no Ollama; see [docs/RUNNING_LOCAL_MODEL.md](docs/RUNNING_LOCAL_MODEL.md).
 
