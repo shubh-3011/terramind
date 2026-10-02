@@ -17,6 +17,20 @@ See [PLAN.md](PLAN.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [PROGRESS.md](PR
 
 Current local validation after the 2026-10-01 analyzer/rules/ratings update is 72 analyzer/data/training/evaluation tests plus a clean TerraMind extension TypeScript check. The proposal diff is explicit and local; multi-file repair, semantic correctness, repair-quality evaluation, interactive UI testing, and successful hosted desktop packaging remain unverified.
 
+## Running TerraMind
+
+Two ways to run the workbench:
+
+1. **Browser workbench (works reliably today).** Start the analyzer and the web workbench:
+   ```powershell
+   scripts\analyzer_live.bat      # http://127.0.0.1:8000
+   scripts\web_live.bat           # http://localhost:8080
+   ```
+   Open `http://localhost:8080` (use Edge or Chrome for `File > Open Folder`; Brave blocks the File System Access API). In any browser, run **TerraMind: Analyze Demo Fixture** from the Command Palette to analyze a local fixture without a folder picker.
+2. **Desktop app.** Build with `npm run gulp vscode-win32-x64-min` (produces `VSCode-win32-x64\TerraMind.exe`). Note: on this development machine the desktop window currently does not open (a startup hang, documented in [PROGRESS.md](PROGRESS.md)); use the browser workbench.
+
+The analyzer auto-discovers a bundled GGUF under `services/analyzer-api/models/` and needs no Ollama; see [docs/RUNNING_LOCAL_MODEL.md](docs/RUNNING_LOCAL_MODEL.md).
+
 ## Analyzer service (development)
 
 Use Python 3.11–3.13. From `services/analyzer-api`:
