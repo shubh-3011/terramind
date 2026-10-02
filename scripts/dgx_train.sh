@@ -41,11 +41,18 @@ esac
 
 export PYTHONPATH="$PWD/code"
 
-echo "=== train ($MODE, bf16 unless *-qlora) ==="
+# Overridable so the same script trains on the distilled corpus at the teacher's context.
+DATA_DIR="${DATA_DIR:-data}"
+MAX_LEN="${MAX_LEN:-8192}"
+EPOCHS="${EPOCHS:-2}"
+VALID="$DATA_DIR/validation.jsonl"
+[ -f "$VALID" ] || VALID="data/validation.jsonl"   # distilled sets reuse the kit's val split
+
+echo "=== train ($MODE, bf16 unless *-qlora; ctx $MAX_LEN, epochs $EPOCHS, data $DATA_DIR) ==="
 python -u -m terramind_ml.train_sft \
-  --train data/train.jsonl --validation data/validation.jsonl \
+  --train "$DATA_DIR/train.jsonl" --validation "$VALID" \
   --output "output/lora-$MODE" --preset "$PRESET" $FLAGS \
-  --max-length 1024 --epochs 3 --lora-r 32 --lora-alpha 64 --save-strategy epoch
+  --max-length "$MAX_LEN" --epochs "$EPOCHS" --lora-r 32 --lora-alpha 64 --save-strategy epoch
 
 echo "=== merge adapter into the base ==="
 python -u -m terramind_ml.merge_sft --adapter "output/lora-$MODE" --output "output/merged-$MODE"
