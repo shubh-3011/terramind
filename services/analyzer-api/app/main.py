@@ -14,6 +14,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import threading
+import uuid
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -50,6 +52,12 @@ app.add_middleware(
 )
 _TRANSFORMERS_GENERATION_LOCK = threading.Lock()
 MAX_GENERATION_REPAIRS = 1
+
+# In-memory registry for the polling generation Job API. Bounded so a long-lived
+# analyzer process cannot grow without limit; oldest jobs are evicted first.
+MAX_GENERATION_JOBS = 32
+_GENERATION_JOBS: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
+_GENERATION_JOBS_LOCK = threading.Lock()
 
 GenerationEngine = Literal["auto", "ollama", "transformers", "gguf"]
 _VALID_GENERATION_ENGINES = frozenset({"auto", "ollama", "transformers", "gguf"})
@@ -148,6 +156,51 @@ class AnalyzeResponse(BaseModel):
     risk_prediction: dict[str, Any] | None
     risk_prediction_reason: str | None
     checks: dict[str, str]
+
+
+class GenerateJobAccepted(BaseModel):
+    """Handle returned when a generation job is queued on a background thread."""
+
+    job_id: str
+
+
+class GenerateJobStatus(BaseModel):
+    """Polled status for one generation job, including a real 0-100 percentage."""
+
+    status: Literal["running", "completed", "failed"]
+    progress: int = Field(ge=0, le=100)
+    phase: str
+    detail: str | None = None
+    result: GenerateResponse | None = None
+
+
+def _create_generation_job(job_id: str) -> None:
+    """Register a fresh running job, evicting the oldest when over the cap."""
+    with _GENERATION_JOBS_LOCK:
+        _GENERATION_JOBS[job_id] = {
+            "status": "running",
+            "progress": 0,
+            "phase": "queued",
+            "detail": None,
+            "result": None,
+        }
+        while len(_GENERATION_JOBS) > MAX_GENERATION_JOBS:
+            _GENERATION_JOBS.popitem(last=False)
+
+
+def _update_generation_job(job_id: str, **changes: Any) -> None:
+    """Apply partial updates to a job under the registry lock."""
+    with _GENERATION_JOBS_LOCK:
+        record = _GENERATION_JOBS.get(job_id)
+        if record is not None:
+            record.update(changes)
+
+
+def _get_generation_job(job_id: str) -> dict[str, Any] | None:
+    """Return a snapshot copy of one job so callers never mutate shared state."""
+    with _GENERATION_JOBS_LOCK:
+        record = _GENERATION_JOBS.get(job_id)
+        return dict(record) if record is not None else None
 
 
 @app.get("/health")
@@ -259,6 +312,80 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
 @app.post("/v1/generate", response_model=GenerateResponse)
 def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     """Generate an HCL draft with local Ollama or an explicitly configured local HF model."""
+    return _run_generation(request)
+
+
+@app.post("/v1/generate/job", response_model=GenerateJobAccepted)
+def generate_terraform_job(request: GenerateRequest) -> GenerateJobAccepted:
+    """Queue a generation request and return a job handle the client can poll."""
+    job_id = uuid.uuid4().hex
+    _create_generation_job(job_id)
+    threading.Thread(
+        target=_run_generation_job,
+        args=(job_id, request),
+        name=f"terramind-generate-{job_id[:8]}",
+        daemon=True,
+    ).start()
+    return GenerateJobAccepted(job_id=job_id)
+
+
+@app.get("/v1/generate/job/{job_id}", response_model=GenerateJobStatus)
+def generate_terraform_job_status(job_id: str) -> GenerateJobStatus:
+    """Return the latest progress/result for a previously queued generation job."""
+    record = _get_generation_job(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Unknown generation job")
+    return GenerateJobStatus(**record)
+
+
+def _run_generation_job(job_id: str, request: GenerateRequest) -> None:
+    """Execute one queued generation, publishing phases and the final result."""
+    last_progress = 0
+
+    def report(percent: int, phase: str) -> None:
+        nonlocal last_progress
+        bounded = max(0, min(100, int(percent)))
+        # Never let progress go backwards (e.g. when a repair restarts token
+        # streaming) so the UI always reads as forward motion.
+        bounded = max(bounded, last_progress)
+        last_progress = bounded
+        _update_generation_job(job_id, progress=bounded, phase=phase, detail=None)
+
+    try:
+        report(5, "starting")
+        response = _run_generation(request, report)
+    except HTTPException as error:
+        _update_generation_job(
+            job_id,
+            status="failed",
+            progress=last_progress,
+            phase="failed",
+            detail=str(error.detail),
+        )
+        return
+    except Exception as error:  # noqa: BLE001 - surfaced to the polling client
+        _update_generation_job(
+            job_id,
+            status="failed",
+            progress=last_progress,
+            phase="failed",
+            detail=str(error) or "Terraform generation failed",
+        )
+        return
+    _update_generation_job(
+        job_id,
+        status="completed",
+        progress=100,
+        phase="completed",
+        detail=None,
+        result=response,
+    )
+
+
+def _run_generation(
+    request: GenerateRequest,
+    progress: Callable[[int, str], None] | None = None,
+) -> GenerateResponse:
     model = request.model or os.environ.get("TERRAMIND_OLLAMA_MODEL", "qwen2.5-coder:3b")
     prompt = (
         f"{GENERATION_SYSTEM_PROMPT}\n\n"
@@ -269,12 +396,32 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
         f"Requested connections and traffic flow:\n{request.connectivity or 'No explicit topology supplied; state assumptions in HCL comments.'}\n\n"
         f"Other constraints:\n{request.constraints or 'No extra constraints supplied.'}\n"
     )
-    generator = _configured_generator(model, request.engine)
+    resolved_engine = _resolve_generation_engine(request.engine)
+    engine_progress: Callable[[float], None] | None = None
+    if progress is not None:
+        # The GGUF engine streams tokens and maps 0-90% to real token progress;
+        # every other engine only reports coarse phases.
+        report = progress
+
+        def _token_progress(fraction: float) -> None:
+            try:
+                bounded = min(1.0, max(0.0, float(fraction)))
+            except (TypeError, ValueError):
+                return
+            report(int(round(bounded * 90)), "generating")
+
+        if resolved_engine == "gguf":
+            engine_progress = _token_progress
+        else:
+            report(20, "generating")
+    generator = _configured_generator(model, request.engine, engine_progress)
 
     current_prompt = prompt
     initial_feedback: str | None = None
     for repair_attempt in range(MAX_GENERATION_REPAIRS + 1):
         response_model, terraform = generator(current_prompt)
+        if progress is not None:
+            progress(90, "validating")
         try:
             response = _validated_generation_response(
                 response_model, terraform, request.workspace_path,
@@ -313,6 +460,8 @@ def generate_terraform(request: GenerateRequest) -> GenerateResponse:
             if repair_attempt == 0
             else "attempted once; review the returned validation findings"
         )
+        if progress is not None:
+            progress(98, "finalizing")
         return response
 
     raise HTTPException(status_code=502, detail="Terraform generation ended without a validated response")
@@ -405,8 +554,19 @@ def _resolve_engine(
     return requested
 
 
+def _resolve_generation_engine(engine: str | None) -> str:
+    """Resolve which engine would handle a request, without building a generator."""
+    gguf_model_path = _discover_gguf_model() or ""
+    hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
+    return _resolve_engine(
+        engine, bool(gguf_model_path), bool(hf_model_path),
+        os.environ.get("TERRAMIND_GENERATION_ENGINE", "auto"),
+    )
+
+
 def _configured_generator(
     model: str, engine: str | None = None,
+    on_progress: Callable[[float], None] | None = None,
 ) -> Callable[[str], tuple[str, str]]:
     gguf_model_path = _discover_gguf_model() or ""
     hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
@@ -420,7 +580,9 @@ def _configured_generator(
                 status_code=503,
                 detail="GGUF engine selected but no GGUF model was found. Set TERRAMIND_GGUF_MODEL, set TERRAMIND_MODELS_DIR, or place a .gguf in the analyzer's models/ directory.",
             )
-        return lambda prompt: generate_with_gguf(gguf_model_path, prompt)
+        if on_progress is None:
+            return lambda prompt: generate_with_gguf(gguf_model_path, prompt)
+        return lambda prompt: generate_with_gguf(gguf_model_path, prompt, on_progress=on_progress)
     if resolved_engine == "transformers":
         if not hf_model_path:
             raise HTTPException(

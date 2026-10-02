@@ -16,7 +16,12 @@ export interface GenerateWizardSubmission {
 	readonly constraints: string;
 }
 
-export type GenerateWizardSubmitHandler = (submission: GenerateWizardSubmission) => Promise<void>;
+export type GenerateWizardProgressReporter = (percent: number, phase: string) => void;
+
+export type GenerateWizardSubmitHandler = (
+	submission: GenerateWizardSubmission,
+	reportProgress: GenerateWizardProgressReporter
+) => Promise<void>;
 
 /**
  * Opens the guided Generate Infrastructure form. The caller owns the analyzer request and the
@@ -91,8 +96,12 @@ export function openGenerateWizard(
 
 		submitting = true;
 		postStatus('working', vscode.l10n.t('Generating a Terraform draft with the configured local model.'));
+		const reportProgress: GenerateWizardProgressReporter = (percent, phase) => {
+			const bounded = Math.max(0, Math.min(100, Math.round(percent)));
+			postStatus('working', vscode.l10n.t('Generating… {0}% · {1}', bounded, phase || 'working'));
+		};
 		try {
-			await onSubmit({ description, resourceInventory, connectivity, constraints });
+			await onSubmit({ description, resourceInventory, connectivity, constraints }, reportProgress);
 			postStatus('success', vscode.l10n.t('Draft generated. Review the Terraform preview and follow the prompts.'));
 		} catch (error) {
 			postStatus('error', getErrorMessage(error));

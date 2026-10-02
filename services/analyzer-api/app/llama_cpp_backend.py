@@ -12,7 +12,7 @@ import math
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import HTTPException
 
@@ -27,6 +27,10 @@ MAX_GGUF_TEMPERATURE = 1.0
 DEFAULT_GGUF_MAX_TOKENS = 1024
 MIN_GGUF_MAX_TOKENS = 128
 MAX_GGUF_MAX_TOKENS = 4096
+
+DEFAULT_GGUF_N_GPU_LAYERS = -1  # -1 = offload every layer when a CUDA build is present
+MIN_GGUF_N_GPU_LAYERS = -1
+MAX_GGUF_N_GPU_LAYERS = 999
 
 _MISSING_PACKAGE_DETAIL = (
     "llama-cpp-python is not installed. Install llama-cpp-python or use another engine."
@@ -91,6 +95,20 @@ def gguf_max_tokens() -> int:
     )
 
 
+def gguf_n_gpu_layers() -> int:
+    """Return how many model layers to offload to the GPU (``-1`` = all).
+
+    This is only honoured by a CUDA/Metal build of llama-cpp-python; a CPU-only
+    build ignores it and keeps running on the CPU.
+    """
+    return _clamp_int(
+        os.environ.get("TERRAMIND_GGUF_N_GPU_LAYERS", str(DEFAULT_GGUF_N_GPU_LAYERS)),
+        DEFAULT_GGUF_N_GPU_LAYERS,
+        MIN_GGUF_N_GPU_LAYERS,
+        MAX_GGUF_N_GPU_LAYERS,
+    )
+
+
 def gguf_n_threads() -> int | None:
     """Return an optional positive GGUF thread count, or None to let llama.cpp decide."""
     configured_value = os.environ.get("TERRAMIND_GGUF_N_THREADS", "").strip()
@@ -122,6 +140,7 @@ def _load_llama(resolved_path: str):
         options: dict[str, Any] = {
             "model_path": resolved_path,
             "n_ctx": gguf_n_ctx(),
+            "n_gpu_layers": gguf_n_gpu_layers(),
             "verbose": False,
         }
         n_threads = gguf_n_threads()
@@ -174,15 +193,104 @@ def _extract_completion_text(result: Any) -> str | None:
     return text if isinstance(text, str) else None
 
 
+def _extract_chat_delta(result: Any) -> str | None:
+    """Return the streamed ``delta.content`` from one chat-completion chunk."""
+    delta = _first_choice(result).get("delta")
+    if isinstance(delta, dict):
+        content = delta.get("content")
+        if isinstance(content, str):
+            return content
+    return None
+
+
+def _notify_progress(
+    on_progress: Callable[[float], None] | None,
+    generated_tokens: int,
+    limit: int,
+) -> None:
+    """Report ``generated_tokens / limit`` clamped to [0, 1], never raising.
+
+    Progress reporting is best effort: a misbehaving callback must not break
+    generation, so every exception is swallowed here.
+    """
+    if on_progress is None:
+        return
+    fraction = 0.0 if limit <= 0 else generated_tokens / limit
+    fraction = min(1.0, max(0.0, fraction))
+    try:
+        on_progress(fraction)
+    except Exception:  # noqa: BLE001 - progress must never break generation
+        pass
+
+
+def _stream_chat_completion(
+    llama: Any,
+    prompt: str,
+    temperature: float,
+    limit: int,
+    on_progress: Callable[[float], None],
+) -> str:
+    """Stream a chat completion, reporting token-fraction progress."""
+    stream = llama.create_chat_completion(
+        messages=[
+            {"role": "system", "content": _SYSTEM_INSTRUCTION},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+        max_tokens=limit,
+        stream=True,
+    )
+    parts: list[str] = []
+    generated = 0
+    for chunk in stream:
+        text = _extract_chat_delta(chunk)
+        if text:
+            parts.append(text)
+            generated += 1
+            _notify_progress(on_progress, generated, limit)
+    _notify_progress(on_progress, limit, limit)
+    return "".join(parts)
+
+
+def _stream_completion(
+    llama: Any,
+    prompt: str,
+    temperature: float,
+    limit: int,
+    on_progress: Callable[[float], None],
+) -> str:
+    """Stream a raw completion, reporting token-fraction progress."""
+    stream = llama.create_completion(
+        prompt=f"{_SYSTEM_INSTRUCTION}\n\n{prompt}",
+        temperature=temperature,
+        max_tokens=limit,
+        stream=True,
+    )
+    parts: list[str] = []
+    generated = 0
+    for chunk in stream:
+        text = _extract_completion_text(chunk)
+        if text:
+            parts.append(text)
+            generated += 1
+            _notify_progress(on_progress, generated, limit)
+    _notify_progress(on_progress, limit, limit)
+    return "".join(parts)
+
+
 def generate_with_gguf(
     model_path: str,
     prompt: str,
     *,
     max_tokens: int | None = None,
+    on_progress: Callable[[float], None] | None = None,
 ) -> tuple[str, str]:
     """Generate a Terraform draft with a bundled local GGUF model.
 
-    Returns ``(f"gguf:{filename}", text)`` to match the other generators.
+    Returns ``(f"gguf:{filename}", text)`` to match the other generators. When
+    ``on_progress`` is provided the engine streams tokens and reports the
+    generated-token fraction (clamped to [0, 1]); the non-streaming path is kept
+    when no callback is supplied.
     """
     resolved_path = str(Path(model_path).expanduser().resolve())
     if not Path(resolved_path).is_file():
@@ -201,22 +309,28 @@ def generate_with_gguf(
 
     try:
         if _has_chat_handler(llama):
-            result = llama.create_chat_completion(
-                messages=[
-                    {"role": "system", "content": _SYSTEM_INSTRUCTION},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=temperature,
-                max_tokens=limit,
-            )
-            terraform = _extract_chat_content(result)
+            if on_progress is None:
+                result = llama.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": _SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=temperature,
+                    max_tokens=limit,
+                )
+                terraform = _extract_chat_content(result)
+            else:
+                terraform = _stream_chat_completion(llama, prompt, temperature, limit, on_progress)
         else:
-            result = llama.create_completion(
-                prompt=f"{_SYSTEM_INSTRUCTION}\n\n{prompt}",
-                temperature=temperature,
-                max_tokens=limit,
-            )
-            terraform = _extract_completion_text(result)
+            if on_progress is None:
+                result = llama.create_completion(
+                    prompt=f"{_SYSTEM_INSTRUCTION}\n\n{prompt}",
+                    temperature=temperature,
+                    max_tokens=limit,
+                )
+                terraform = _extract_completion_text(result)
+            else:
+                terraform = _stream_completion(llama, prompt, temperature, limit, on_progress)
     except HTTPException:
         raise
     except Exception as error:

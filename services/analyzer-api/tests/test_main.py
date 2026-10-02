@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 import json
+import time
 
 import pytest
 
@@ -719,3 +720,73 @@ def test_generate_with_ollama_sends_bounded_options_and_keep_alive(monkeypatch):
     assert payload["stream"] is False
     assert payload["keep_alive"] == "5m"
     assert payload["options"] == {"temperature": 0.25, "num_predict": 2048, "num_ctx": 4096}
+
+
+# --- generation Job API -----------------------------------------------------
+
+
+def test_generate_job_reaches_completed_with_result():
+    with patch(
+        "app.main._generate_with_ollama",
+        return_value=("test-model", 'resource "aws_s3_bucket" "job" {}'),
+    ):
+        accepted = client.post("/v1/generate/job", json={"description": "Create a private S3 bucket"})
+        assert accepted.status_code == 200
+        job_id = accepted.json()["job_id"]
+
+        deadline = time.time() + 10
+        status: dict = {}
+        while time.time() < deadline:
+            response = client.get(f"/v1/generate/job/{job_id}")
+            assert response.status_code == 200
+            status = response.json()
+            if status["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.02)
+
+    assert status["status"] == "completed"
+    assert status["progress"] == 100
+    assert status["phase"] == "completed"
+    assert status["result"] is not None
+    assert status["result"]["status"] == "completed"
+    assert status["result"]["terraform"] == 'resource "aws_s3_bucket" "job" {}'
+
+
+def test_generate_job_reports_failure_detail():
+    from fastapi import HTTPException
+
+    def explode(*_args, **_kwargs):
+        raise HTTPException(status_code=503, detail="Local Ollama is unavailable")
+
+    with patch("app.main._generate_with_ollama", side_effect=explode):
+        accepted = client.post("/v1/generate/job", json={"description": "Create a private S3 bucket"})
+        job_id = accepted.json()["job_id"]
+
+        deadline = time.time() + 10
+        status: dict = {}
+        while time.time() < deadline:
+            status = client.get(f"/v1/generate/job/{job_id}").json()
+            if status["status"] != "running":
+                break
+            time.sleep(0.02)
+
+    assert status["status"] == "failed"
+    assert status["result"] is None
+    assert status["detail"] == "Local Ollama is unavailable"
+
+
+def test_generate_job_unknown_id_returns_404():
+    response = client.get("/v1/generate/job/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_generate_job_registry_is_bounded():
+    from app.main import MAX_GENERATION_JOBS, _GENERATION_JOBS, _create_generation_job
+
+    for index in range(MAX_GENERATION_JOBS + 5):
+        _create_generation_job(f"unit-test-job-{index}")
+
+    assert len(_GENERATION_JOBS) <= MAX_GENERATION_JOBS
+    # The oldest entries were evicted.
+    assert "unit-test-job-0" not in _GENERATION_JOBS
+

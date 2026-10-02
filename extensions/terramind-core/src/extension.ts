@@ -370,11 +370,19 @@ export function activate(context: vscode.ExtensionContext): void {
 		try {
 			const model = vscode.workspace.getConfiguration('terramind').get<string>('generationModel', 'qwen2.5-coder:3b');
 			const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
-			const generated = await vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with the configured local model'),
-				cancellable: false
-			}, () => requestGeneration(requirements.trim(), resourceInventory?.trim() ?? '', connectivity?.trim() ?? '', constraints?.trim() ?? '', model, workspaceFolder.uri.fsPath, runExternalTools, vscode.workspace.isTrusted));
+			const generated = await requestGenerationJob(
+				requirements.trim(),
+				resourceInventory?.trim() ?? '',
+				connectivity?.trim() ?? '',
+				constraints?.trim() ?? '',
+				model,
+				workspaceFolder.uri.fsPath,
+				runExternalTools,
+				vscode.workspace.isTrusted
+			);
+			if (!generated) {
+				return;
+			}
 			await presentGeneratedDraft(context, workspaceFolder, generated);
 		} catch (error) {
 			output.appendLine(`Local Terraform generation failed: ${getErrorMessage(error)}`);
@@ -389,14 +397,10 @@ export function activate(context: vscode.ExtensionContext): void {
 			await vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before generating Terraform.'));
 			return;
 		}
-		openGenerateWizard(context, workspaceFolder, async submission => {
+		openGenerateWizard(context, workspaceFolder, async (submission, reportProgress) => {
 			const model = vscode.workspace.getConfiguration('terramind').get<string>('generationModel', 'qwen2.5-coder:3b');
 			const runExternalTools = vscode.workspace.getConfiguration('terramind.analysis').get<boolean>('runExternalTools', false);
-			const generated = await vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-				title: vscode.l10n.t('TerraMind: Generating a Terraform draft with the configured local model'),
-				cancellable: false
-			}, () => requestGeneration(
+			const generated = await requestGenerationJob(
 				submission.description,
 				submission.resourceInventory,
 				submission.connectivity,
@@ -404,8 +408,12 @@ export function activate(context: vscode.ExtensionContext): void {
 				model,
 				workspaceFolder.uri.fsPath,
 				runExternalTools,
-				vscode.workspace.isTrusted
-			));
+				vscode.workspace.isTrusted,
+				reportProgress
+			);
+			if (!generated) {
+				return;
+			}
 			await presentGeneratedDraft(context, workspaceFolder, generated);
 		});
 	}));
@@ -589,7 +597,20 @@ async function requestAnalysis(workspacePath: string, runExternalTools: boolean,
 	return await response.json() as AnalysisResult;
 }
 
-async function requestGeneration(
+interface GenerationJobStatus {
+	readonly status: 'running' | 'completed' | 'failed';
+	readonly progress: number;
+	readonly phase: string;
+	readonly detail: string | null;
+	readonly result: GenerationResult | null;
+}
+
+/**
+ * Queues generation on the analyzer and polls the Job API, reporting a real
+ * percentage through a cancellable notification progress. Returns `undefined`
+ * when the user cancels so callers can stop before presenting a draft.
+ */
+async function requestGenerationJob(
 	description: string,
 	resourceInventory: string,
 	connectivity: string,
@@ -597,30 +618,79 @@ async function requestGeneration(
 	model: string,
 	workspacePath: string,
 	runExternalTools: boolean,
-	workspaceTrusted: boolean
-): Promise<GenerationResult> {
+	workspaceTrusted: boolean,
+	onProgress?: (percent: number, phase: string) => void
+): Promise<GenerationResult | undefined> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
 	const engine = vscode.workspace.getConfiguration('terramind').get<string>('generationEngine', 'auto');
-	const response = await fetch(`${analyzerUrl}/v1/generate`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
-			description,
-			resource_inventory: resourceInventory,
-			connectivity,
-			constraints,
-			model,
-			engine,
-			workspace_path: workspacePath,
-			run_external_tools: runExternalTools,
-			workspace_trusted: workspaceTrusted
-		})
-	});
-	if (!response.ok) {
-		const error = await response.json().catch(() => undefined) as { detail?: string } | undefined;
-		throw new Error(error?.detail ?? `Analyzer returned HTTP ${response.status}`);
-	}
-	return await response.json() as GenerationResult;
+	return vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: vscode.l10n.t('TerraMind: Generating a Terraform draft with the configured local model'),
+			cancellable: true
+		},
+		async (progress, token) => {
+			const startResponse = await fetch(`${analyzerUrl}/v1/generate/job`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					description,
+					resource_inventory: resourceInventory,
+					connectivity,
+					constraints,
+					model,
+					engine,
+					workspace_path: workspacePath,
+					run_external_tools: runExternalTools,
+					workspace_trusted: workspaceTrusted
+				})
+			});
+			if (!startResponse.ok) {
+				const error = await startResponse.json().catch(() => undefined) as { detail?: string } | undefined;
+				throw new Error(error?.detail ?? `Analyzer returned HTTP ${startResponse.status}`);
+			}
+			const started = await startResponse.json() as { job_id?: string };
+			if (!started.job_id) {
+				throw new Error('The analyzer did not return a generation job id.');
+			}
+			const jobId = encodeURIComponent(started.job_id);
+			let reported = 0;
+			for (;;) {
+				if (token.isCancellationRequested) {
+					return undefined;
+				}
+				const statusResponse = await fetch(`${analyzerUrl}/v1/generate/job/${jobId}`);
+				if (statusResponse.status === 404) {
+					throw new Error('The analyzer no longer knows this generation job. Try again.');
+				}
+				if (!statusResponse.ok) {
+					throw new Error(`Analyzer returned HTTP ${statusResponse.status}`);
+				}
+				const status = await statusResponse.json() as GenerationJobStatus;
+				const percent = Math.max(0, Math.min(100, Math.round(status.progress ?? 0)));
+				const phase = status.phase || 'working';
+				progress.report({
+					increment: Math.max(0, percent - reported),
+					message: vscode.l10n.t('progress: {0}% · {1}', percent, phase)
+				});
+				reported = Math.max(reported, percent);
+				if (onProgress) {
+					onProgress(percent, phase);
+				}
+				if (status.status === 'completed') {
+					return status.result ?? undefined;
+				}
+				if (status.status === 'failed') {
+					throw new Error(status.detail ?? 'Terraform generation failed.');
+				}
+				await waitFor(500);
+			}
+		}
+	);
+}
+
+function waitFor(milliseconds: number): Promise<void> {
+	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 async function requestRepair(

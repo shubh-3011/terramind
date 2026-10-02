@@ -234,6 +234,40 @@ class _CompletionFakeLlama:
         return {"choices": [{"text": 'resource "aws_s3_bucket" "y" {}'}]}
 
 
+class _StreamingChatFakeLlama:
+    """Yields chat deltas like llama-cpp-python does when ``stream=True``."""
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.metadata = {"tokenizer.chat_template": "template"}
+        self.chat_format = "chatml"
+
+    def create_chat_completion(self, **kwargs):
+        assert kwargs.get("stream") is True
+        for token in ('resource ', '"aws_s3_bucket" ', '"x" ', "{}"):
+            yield {"choices": [{"delta": {"content": token}}]}
+        # A final chunk with no content carries only the finish reason.
+        yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
+
+
+class _StreamingCompletionFakeLlama:
+    """Yields completion chunks like llama-cpp-python does when ``stream=True``."""
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.metadata = {}
+        self.chat_format = None
+
+    def create_chat_completion(self, **kwargs):
+        raise AssertionError("chat completion must not be used without a chat handler")
+
+    def create_completion(self, **kwargs):
+        assert kwargs.get("stream") is True
+        for token in ('resource ', '"aws_s3_bucket" ', '"y" ', "{}"):
+            yield {"choices": [{"text": token}]}
+        yield {"choices": [{"text": "", "finish_reason": "stop"}]}
+
+
 def _fake_llama_module(fake_llama):
     return types.SimpleNamespace(Llama=fake_llama)
 
@@ -260,3 +294,59 @@ def test_generate_with_gguf_falls_back_to_completion_without_chat_handler(tmp_pa
 
     assert label == "gguf:terramind.gguf"
     assert text == 'resource "aws_s3_bucket" "y" {}'
+
+
+# --- streaming progress callback -------------------------------------------
+
+
+def test_generate_with_gguf_reports_increasing_progress_and_final_one(tmp_path):
+    model_file = tmp_path / "terramind.gguf"
+    model_file.write_bytes(b"GGUF")
+    llama_cpp_backend._LLAMA_CACHE.pop(str(model_file.resolve()), None)
+    fractions: list[float] = []
+
+    with patch.dict(sys.modules, {"llama_cpp": _fake_llama_module(_StreamingChatFakeLlama)}):
+        label, text = generate_with_gguf(
+            str(model_file), "draft something", max_tokens=128, on_progress=fractions.append,
+        )
+
+    assert label == "gguf:terramind.gguf"
+    assert text == 'resource "aws_s3_bucket" "x" {}'
+    assert fractions, "the progress callback must be invoked"
+    assert all(0.0 <= fraction <= 1.0 for fraction in fractions)
+    assert fractions == sorted(fractions)
+    assert fractions[-1] == 1.0
+
+
+def test_generate_with_gguf_streams_completion_progress(tmp_path):
+    model_file = tmp_path / "terramind.gguf"
+    model_file.write_bytes(b"GGUF")
+    llama_cpp_backend._LLAMA_CACHE.pop(str(model_file.resolve()), None)
+    fractions: list[float] = []
+
+    with patch.dict(sys.modules, {"llama_cpp": _fake_llama_module(_StreamingCompletionFakeLlama)}):
+        label, text = generate_with_gguf(
+            str(model_file), "draft something", max_tokens=128, on_progress=fractions.append,
+        )
+
+    assert label == "gguf:terramind.gguf"
+    assert text == 'resource "aws_s3_bucket" "y" {}'
+    assert fractions[-1] == 1.0
+
+
+def test_generate_with_gguf_never_raises_from_progress_callback(tmp_path):
+    model_file = tmp_path / "terramind.gguf"
+    model_file.write_bytes(b"GGUF")
+    llama_cpp_backend._LLAMA_CACHE.pop(str(model_file.resolve()), None)
+
+    def explode(_fraction: float) -> None:
+        raise RuntimeError("progress callback must not break generation")
+
+    with patch.dict(sys.modules, {"llama_cpp": _fake_llama_module(_StreamingChatFakeLlama)}):
+        label, text = generate_with_gguf(
+            str(model_file), "draft something", max_tokens=128, on_progress=explode,
+        )
+
+    assert label == "gguf:terramind.gguf"
+    assert text == 'resource "aws_s3_bucket" "x" {}'
+
