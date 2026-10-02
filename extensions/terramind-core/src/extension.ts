@@ -522,6 +522,12 @@ export async function presentGeneratedDraft(
 		throw new Error('The generated draft did not pass HCL syntax parsing.');
 	}
 	const output = getOutputChannel(context);
+	if (!generated.terraform.trim()) {
+		output.appendLine('Generation returned an empty Terraform draft; refusing to preview or save it.');
+		output.show(true);
+		await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind generated an empty Terraform draft. Nothing was saved; adjust the description and run generation again.'));
+		return;
+	}
 	output.appendLine(`Generated Terraform draft with ${generated.model}. ${generated.validation_scope}`);
 	const findings = generated.findings ?? [];
 	for (const [check, status] of Object.entries(generated.checks ?? {})) {
@@ -553,8 +559,9 @@ export async function presentGeneratedDraft(
 	if (choice !== vscode.l10n.t('Save Draft to Workspace')) {
 		return;
 	}
+	const defaultTarget = vscode.Uri.joinPath(workspaceFolder.uri, 'terramind-generated', 'main.tf');
 	const target = await vscode.window.showSaveDialog({
-		defaultUri: vscode.Uri.joinPath(workspaceFolder.uri, 'terramind-generated', 'main.tf'),
+		defaultUri: defaultTarget,
 		saveLabel: vscode.l10n.t('Save Reviewed Terraform Draft'),
 		filters: { [vscode.l10n.t('Terraform')]: ['tf'] }
 	});
@@ -565,8 +572,16 @@ export async function presentGeneratedDraft(
 		await vscode.window.showErrorMessage(vscode.l10n.t('Choose a location inside the currently open workspace.'));
 		return;
 	}
+	let exists = false;
 	try {
 		await vscode.workspace.fs.stat(target);
+		exists = true;
+	} catch (error) {
+		if (!(error instanceof vscode.FileSystemError) || error.code !== 'FileNotFound') {
+			throw error;
+		}
+	}
+	if (exists) {
 		const overwrite = await vscode.window.showWarningMessage(
 			vscode.l10n.t('This file already exists. Replace it with the reviewed draft?'),
 			{ modal: true }, vscode.l10n.t('Overwrite')
@@ -574,14 +589,50 @@ export async function presentGeneratedDraft(
 		if (overwrite !== vscode.l10n.t('Overwrite')) {
 			return;
 		}
-	} catch (error) {
-		if (!(error instanceof vscode.FileSystemError) || error.code !== 'FileNotFound') {
-			throw error;
-		}
 	}
-	await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(generated.terraform));
-	output.appendLine(`Saved reviewed draft to ${vscode.workspace.asRelativePath(target)}; starting workspace analysis.`);
-	await vscode.commands.executeCommand('terramind.analyzeWorkspace');
+	try {
+		await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(target, '..'));
+		await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(generated.terraform));
+		const written = await vscode.workspace.fs.stat(target);
+		if (!written || written.size <= 0) {
+			output.appendLine(`ERROR: wrote empty file at ${describeUri(target)} (reported ${written ? written.size : 'unknown'} bytes). The draft was not persisted.`);
+			output.show(true);
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind saved the draft at {0} but the file is empty on disk. Nothing usable was written; check the workspace file system and try again.', describeUri(target)));
+			return;
+		}
+		output.appendLine(`Saved reviewed draft to ${describeUri(target)} (${written.size} bytes); starting workspace analysis.`);
+		output.show(true);
+		const savedDocument = await vscode.workspace.openTextDocument(target);
+		await vscode.window.showTextDocument(savedDocument, { preview: false });
+		await closeUntitledDocument(preview);
+		await vscode.commands.executeCommand('terramind.analyzeWorkspace');
+	} catch (error) {
+		output.appendLine(`Saving the reviewed draft to ${describeUri(target)} failed: ${getErrorMessage(error)}`);
+		output.show(true);
+		await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind could not save the draft to {0}: {1}', describeUri(target), getErrorMessage(error)));
+	}
+}
+
+/** Returns a human-readable absolute location for logging and messages. */
+function describeUri(uri: vscode.Uri): string {
+	return uri.scheme === 'file' ? uri.fsPath : uri.toString();
+}
+
+/** Closes the untitled generation preview so the user is left looking at the saved file. */
+async function closeUntitledDocument(document: vscode.TextDocument): Promise<void> {
+	if (!document.isUntitled) {
+		return;
+	}
+	try {
+		const previewTabs = vscode.window.tabGroups.all
+			.flatMap(group => group.tabs)
+			.filter(tab => tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === document.uri.toString());
+		if (previewTabs.length) {
+			await vscode.window.tabGroups.close(previewTabs);
+		}
+	} catch {
+		// Best effort only: leaving the untitled preview open is harmless.
+	}
 }
 
 async function requestAnalysis(workspacePath: string, runExternalTools: boolean, workspaceTrusted: boolean): Promise<AnalysisResult> {
