@@ -34,6 +34,12 @@ PRESETS: dict[str, dict[str, Any]] = {
         "redistributable": True,
     },
     # Larger base intended for the optional 4-bit QLoRA path so it fits an 8 GB GPU.
+    "qwen3-4b-instruct-2507": {
+        "model": "Qwen/Qwen3-4B-Instruct-2507",
+        "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+        "license": "Apache-2.0",
+        "redistributable": True,
+    },
     "qwen2.5-coder-7b-instruct": {
         "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
         "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
