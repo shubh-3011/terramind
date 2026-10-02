@@ -115,41 +115,46 @@ function getHtml(title: string, workspaceName: string): string {
 <title>${escapeHtml(title)}</title>
 <style nonce="${nonce}">
 	:root { color-scheme: light dark; }
+	html {
+		background: var(--vscode-editor-background, var(--vscode-sideBar-background, #ffffff));
+	}
 	body {
-		font-family: var(--vscode-font-family);
-		font-size: var(--vscode-font-size);
-		color: var(--vscode-foreground);
+		background: var(--vscode-editor-background, var(--vscode-sideBar-background, #ffffff));
+		font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
+		font-size: var(--vscode-font-size, 13px);
+		color: var(--vscode-foreground, #1f1f1f);
 		padding: 16px 20px 32px;
 		max-width: 820px;
 	}
+	a { color: var(--vscode-textLink-foreground, #0a66c2); }
 	h1 { font-size: 1.25em; margin: 0 0 4px; }
-	p.workspace { margin: 0 0 16px; color: var(--vscode-descriptionForeground); }
+	p.workspace { margin: 0 0 16px; color: var(--vscode-descriptionForeground, #6a6a6a); }
 	.field { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
 	label { font-weight: 600; }
-	.hint { color: var(--vscode-descriptionForeground); font-weight: 400; }
+	.hint { color: var(--vscode-descriptionForeground, #6a6a6a); font-weight: 400; }
 	input[type="text"], input[type="number"], textarea {
 		width: 100%;
 		box-sizing: border-box;
 		padding: 6px 8px;
-		color: var(--vscode-input-foreground);
-		background: var(--vscode-input-background);
-		border: 1px solid var(--vscode-input-border, transparent);
+		color: var(--vscode-input-foreground, #1f1f1f);
+		background: var(--vscode-input-background, #ffffff);
+		border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
 		border-radius: 2px;
 		font-family: inherit;
 		font-size: inherit;
 	}
-	input:focus, textarea:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+	input:focus, textarea:focus { outline: 1px solid var(--vscode-focusBorder, #0090f1); outline-offset: -1px; }
 	textarea { resize: vertical; min-height: 64px; }
 	.rows { display: flex; flex-direction: column; gap: 8px; }
 	.row { display: grid; grid-template-columns: 1fr 110px auto; gap: 8px; align-items: center; }
 	button { padding: 6px 12px; border: none; border-radius: 2px; cursor: pointer; font-family: inherit; font-size: inherit; }
 	button:disabled { opacity: 0.6; cursor: default; }
-	.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-	.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+	.primary { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #ffffff); }
+	.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, #1177bb); }
 	.secondary {
-		background: var(--vscode-button-secondaryBackground, transparent);
-		color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-		border: 1px solid var(--vscode-input-border, transparent);
+		background: var(--vscode-button-secondaryBackground, #e0e0e0);
+		color: var(--vscode-button-secondaryForeground, #1f1f1f);
+		border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
 	}
 	.actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
 	.status {
@@ -158,16 +163,16 @@ function getHtml(title: string, workspaceName: string): string {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		color: var(--vscode-descriptionForeground);
+		color: var(--vscode-descriptionForeground, #6a6a6a);
 	}
-	.status[data-state="error"] { color: var(--vscode-errorForeground); }
-	.status[data-state="success"] { color: var(--vscode-testing-iconPassed, var(--vscode-foreground)); }
+	.status[data-state="error"] { color: var(--vscode-errorForeground, #f85149); }
+	.status[data-state="success"] { color: var(--vscode-testing-iconPassed, #3fb950); }
 	.spinner {
 		display: none;
 		width: 13px;
 		height: 13px;
 		border-radius: 50%;
-		border: 2px solid var(--vscode-progressBar-background, #888888);
+		border: 2px solid var(--vscode-progressBar-background, #0e70c0);
 		border-top-color: transparent;
 		animation: spin 0.8s linear infinite;
 	}

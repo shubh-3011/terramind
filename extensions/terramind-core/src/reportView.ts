@@ -58,39 +58,44 @@ function getHtml(workspaceName: string, report: AnalysisResult | undefined): str
 <title>${escapeHtml(title)}</title>
 <style>
 	:root { color-scheme: light dark; }
+	html {
+		background: var(--vscode-editor-background, var(--vscode-sideBar-background, #ffffff));
+	}
 	body {
-		font-family: var(--vscode-font-family);
-		font-size: var(--vscode-font-size);
-		color: var(--vscode-foreground);
+		background: var(--vscode-editor-background, var(--vscode-sideBar-background, #ffffff));
+		font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
+		font-size: var(--vscode-font-size, 13px);
+		color: var(--vscode-foreground, #1f1f1f);
 		padding: 16px 20px 32px;
 		max-width: 900px;
 		line-height: 1.5;
 	}
+	a { color: var(--vscode-textLink-foreground, #0a66c2); }
 	h1 { font-size: 1.4em; margin: 0 0 14px; }
 	h2 {
 		font-size: 1.15em;
 		margin: 0 0 10px;
 		padding-bottom: 6px;
-		border-bottom: 1px solid var(--vscode-panel-border, transparent);
+		border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
 	}
 	h3 { font-size: 1em; margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; }
 	.section { margin-top: 26px; }
-	.muted { color: var(--vscode-descriptionForeground); }
-	.empty { color: var(--vscode-descriptionForeground); font-style: italic; margin: 0; }
+	.muted { color: var(--vscode-descriptionForeground, #6a6a6a); }
+	.empty { color: var(--vscode-descriptionForeground, #6a6a6a); font-style: italic; margin: 0; }
 	.workspace { margin: 0 0 8px; }
 	.metrics { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; }
-	.metric { color: var(--vscode-descriptionForeground); }
-	.metric.error strong { color: var(--vscode-errorForeground); }
-	.metric.warning strong { color: var(--vscode-editorWarning-foreground, #cca700); }
+	.metric { color: var(--vscode-descriptionForeground, #6a6a6a); }
+	.metric.error strong { color: var(--vscode-errorForeground, #f85149); }
+	.metric.warning strong { color: var(--vscode-editorWarning-foreground, #d29922); }
 	.risk {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 10px;
 		padding: 8px 12px;
-		border: 1px solid var(--vscode-panel-border, transparent);
+		border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
 		border-radius: 4px;
-		background: var(--vscode-textBlockQuote-background, transparent);
+		background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.1));
 	}
 	.risk-label { font-weight: 600; }
 	.risk-value { font-size: 1.35em; font-weight: 700; }
@@ -103,21 +108,21 @@ function getHtml(workspaceName: string, report: AnalysisResult | undefined): str
 		text-transform: uppercase;
 		border: 1px solid currentColor;
 	}
-	.chip-error { color: var(--vscode-errorForeground); }
-	.chip-warning { color: var(--vscode-editorWarning-foreground, #cca700); }
+	.chip-error { color: var(--vscode-errorForeground, #f85149); }
+	.chip-warning { color: var(--vscode-editorWarning-foreground, #d29922); }
 	.chip-information { color: var(--vscode-editorInfo-foreground, #3794ff); }
-	.chip-experimental { color: var(--vscode-descriptionForeground); }
+	.chip-experimental { color: var(--vscode-descriptionForeground, #6a6a6a); }
 	.service {
 		margin-bottom: 14px;
 		padding: 10px 12px;
-		border: 1px solid var(--vscode-panel-border, transparent);
+		border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
 		border-radius: 4px;
 	}
 	.service-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 	.service-name { font-weight: 600; }
 	.dim { margin-bottom: 8px; }
 	.dim-row { display: grid; grid-template-columns: 140px 1fr 72px; align-items: center; gap: 10px; }
-	.dim-label { color: var(--vscode-descriptionForeground); }
+	.dim-label { color: var(--vscode-descriptionForeground, #6a6a6a); }
 	.bar {
 		display: block;
 		height: 8px;
@@ -126,12 +131,12 @@ function getHtml(workspaceName: string, report: AnalysisResult | undefined): str
 		overflow: hidden;
 	}
 	.bar-fill { display: block; height: 100%; background: var(--vscode-progressBar-background, #0e70c0); }
-	.bar-good { background: var(--vscode-testing-iconPassed, #89d185); }
-	.bar-fair { background: var(--vscode-editorWarning-foreground, #cca700); }
-	.bar-poor { background: var(--vscode-errorForeground, #f14c4c); }
+	.bar-good { background: var(--vscode-testing-iconPassed, #3fb950); }
+	.bar-fair { background: var(--vscode-editorWarning-foreground, #d29922); }
+	.bar-poor { background: var(--vscode-errorForeground, #f85149); }
 	.score { text-align: right; font-variant-numeric: tabular-nums; }
-	.not-rated { text-align: right; color: var(--vscode-descriptionForeground); font-style: italic; }
-	.dim-details { margin: 4px 0 0 150px; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+	.not-rated { text-align: right; color: var(--vscode-descriptionForeground, #6a6a6a); font-style: italic; }
+	.dim-details { margin: 4px 0 0 150px; color: var(--vscode-descriptionForeground, #6a6a6a); font-size: 0.92em; }
 	.dim-summary { margin: 0 0 4px; }
 	.detail-list { margin: 2px 0; }
 	.detail-label { font-weight: 600; }
@@ -140,7 +145,7 @@ function getHtml(workspaceName: string, report: AnalysisResult | undefined): str
 	.rec {
 		margin-bottom: 12px;
 		padding: 10px 12px;
-		border: 1px solid var(--vscode-panel-border, transparent);
+		border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
 		border-radius: 4px;
 	}
 	.rec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -151,15 +156,15 @@ function getHtml(workspaceName: string, report: AnalysisResult | undefined): str
 		padding: 1px 5px;
 		border-radius: 3px;
 	}
-	.count { color: var(--vscode-descriptionForeground); }
+	.count { color: var(--vscode-descriptionForeground, #6a6a6a); }
 	.rec-title { margin: 0 0 4px; font-weight: 600; }
 	.rec-text { margin: 0 0 4px; }
-	.files, .location { color: var(--vscode-descriptionForeground); font-size: 0.9em; margin: 0; }
+	.files, .location { color: var(--vscode-descriptionForeground, #6a6a6a); font-size: 0.9em; margin: 0; }
 	.findings { list-style: none; margin: 0; padding: 0; }
-	.finding { margin-bottom: 10px; padding: 8px 10px; border-left: 3px solid var(--vscode-panel-border, transparent); }
+	.finding { margin-bottom: 10px; padding: 8px 10px; border-left: 3px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35)); }
 	.finding-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
 	.finding-message { margin: 0 0 4px; }
-	.finding-recommendation { margin: 0; color: var(--vscode-descriptionForeground); }
+	.finding-recommendation { margin: 0; color: var(--vscode-descriptionForeground, #6a6a6a); }
 </style>
 </head>
 <body>
