@@ -32,6 +32,14 @@ DEFAULT_GGUF_N_GPU_LAYERS = -1  # -1 = offload every layer when a CUDA build is 
 MIN_GGUF_N_GPU_LAYERS = -1
 MAX_GGUF_N_GPU_LAYERS = 999
 
+# Small models loop on repetitive data sources; penalize repetition so a draft
+# terminates instead of repeating the same block until the token limit.
+DEFAULT_GGUF_REPEAT_PENALTY = 1.15
+MIN_GGUF_REPEAT_PENALTY = 1.0
+MAX_GGUF_REPEAT_PENALTY = 2.0
+DEFAULT_GGUF_TOP_P = 0.9
+DEFAULT_GGUF_TOP_K = 40
+
 _MISSING_PACKAGE_DETAIL = (
     "llama-cpp-python is not installed. Install llama-cpp-python or use another engine."
 )
@@ -93,6 +101,29 @@ def gguf_max_tokens() -> int:
         MIN_GGUF_MAX_TOKENS,
         MAX_GGUF_MAX_TOKENS,
     )
+
+
+def gguf_repeat_penalty() -> float:
+    """Return a bounded repetition penalty (>1 discourages loops)."""
+    return _clamp_float(
+        os.environ.get("TERRAMIND_GGUF_REPEAT_PENALTY", str(DEFAULT_GGUF_REPEAT_PENALTY)),
+        DEFAULT_GGUF_REPEAT_PENALTY,
+        MIN_GGUF_REPEAT_PENALTY,
+        MAX_GGUF_REPEAT_PENALTY,
+    )
+
+
+def _sampling_options(temperature: float, limit: int) -> dict[str, Any]:
+    """Shared sampling options for every GGUF completion call."""
+    return {
+        "temperature": temperature,
+        "max_tokens": limit,
+        "top_p": DEFAULT_GGUF_TOP_P,
+        "top_k": DEFAULT_GGUF_TOP_K,
+        "repeat_penalty": gguf_repeat_penalty(),
+        "frequency_penalty": 0.2,
+        "presence_penalty": 0.2,
+    }
 
 
 def gguf_n_gpu_layers() -> int:
@@ -236,9 +267,8 @@ def _stream_chat_completion(
             {"role": "system", "content": _SYSTEM_INSTRUCTION},
             {"role": "user", "content": prompt},
         ],
-        temperature=temperature,
-        max_tokens=limit,
         stream=True,
+        **_sampling_options(temperature, limit),
     )
     parts: list[str] = []
     generated = 0
@@ -262,9 +292,8 @@ def _stream_completion(
     """Stream a raw completion, reporting token-fraction progress."""
     stream = llama.create_completion(
         prompt=f"{_SYSTEM_INSTRUCTION}\n\n{prompt}",
-        temperature=temperature,
-        max_tokens=limit,
         stream=True,
+        **_sampling_options(temperature, limit),
     )
     parts: list[str] = []
     generated = 0
@@ -315,8 +344,7 @@ def generate_with_gguf(
                         {"role": "system", "content": _SYSTEM_INSTRUCTION},
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=temperature,
-                    max_tokens=limit,
+                    **_sampling_options(temperature, limit),
                 )
                 terraform = _extract_chat_content(result)
             else:
@@ -325,8 +353,7 @@ def generate_with_gguf(
             if on_progress is None:
                 result = llama.create_completion(
                     prompt=f"{_SYSTEM_INSTRUCTION}\n\n{prompt}",
-                    temperature=temperature,
-                    max_tokens=limit,
+                    **_sampling_options(temperature, limit),
                 )
                 terraform = _extract_completion_text(result)
             else:

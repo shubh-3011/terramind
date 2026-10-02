@@ -1,4 +1,19 @@
-from app.main import _trim_incomplete_hcl
+from app.main import _trim_incomplete_hcl, _trim_repetition_loop
+
+
+def test_repetition_loop_is_cut_at_first_repeat():
+    block = '# Data source\ndata "aws_iam_users" "available" {\n  filter {\n    name = "tag:Name"\n  }\n}'
+    source = f'{block}\n\n{block}\n\n{block}\n'
+    result, trimmed = _trim_repetition_loop(source)
+    assert trimmed is True
+    assert result.strip() == block.strip()
+
+
+def test_non_repeating_source_is_unchanged():
+    source = 'resource "a" "b" {\n  x = 1\n}\n\nresource "c" "d" {\n  y = 2\n}\n'
+    result, trimmed = _trim_repetition_loop(source)
+    assert trimmed is False
+    assert result == source
 
 
 def test_balanced_source_is_unchanged():
