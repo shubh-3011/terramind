@@ -5,7 +5,7 @@
 
 import { AbstractPolicyService, IPolicyService, PolicyDefinition, PolicyValue } from '../common/policy.js';
 import { IStringDictionary } from '../../../base/common/collections.js';
-import { Throttler } from '../../../base/common/async.js';
+import { raceTimeout, Throttler } from '../../../base/common/async.js';
 import type { PolicyUpdate, Watcher } from '@vscode/policy-watcher';
 import { MutableDisposable } from '../../../base/common/lifecycle.js';
 import { ILogService } from '../../log/common/log.js';
@@ -27,7 +27,13 @@ export class NativePolicyService extends AbstractPolicyService implements IPolic
 
 		const { createWatcher } = await import('@vscode/policy-watcher');
 
-		await this.throttler.queue(() => new Promise<void>((c, e) => {
+		// The watcher resolves this promise only from its initial callback. If the
+		// native binding fails to report (or never invokes the callback), awaiting
+		// it forever would block configuration initialization and, transitively,
+		// the entire application startup before any window is created. Guard with a
+		// timeout so a misbehaving/absent native watcher degrades to "no policies"
+		// instead of hanging the app.
+		await this.throttler.queue(() => raceTimeout(new Promise<void>((c, e) => {
 			try {
 				this.logService.trace(`Creating watcher for productName ${this.productName}`);
 				this.watcher.value = createWatcher(this.productName, policyDefinitions, update => {
@@ -38,7 +44,7 @@ export class NativePolicyService extends AbstractPolicyService implements IPolic
 				this.logService.error(`NativePolicyService#_updatePolicyDefinitions - Error creating watcher:`, err);
 				e(err);
 			}
-		}));
+		}), 5000, () => this.logService.warn(`NativePolicyService#_updatePolicyDefinitions - Policy watcher for productName '${this.productName}' did not report initial values within 5000ms; continuing without waiting for it.`)));
 	}
 
 	private _onDidPolicyChange(update: PolicyUpdate<IStringDictionary<PolicyDefinition>>): void {
