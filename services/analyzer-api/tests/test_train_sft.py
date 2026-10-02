@@ -9,6 +9,8 @@ from terramind_ml.train_sft import (
     DEFAULT_MODEL_REVISION,
     DEFAULT_PRESET,
     PRESETS,
+    build_arg_parser,
+    build_bnb_config,
     encode_conversation,
     resolve_base_model,
     summarize_encoding,
@@ -100,6 +102,7 @@ def test_every_preset_pins_a_revision_and_records_license():
         "qwen2.5-coder-1.5b-instruct": ("Qwen/Qwen2.5-Coder-1.5B-Instruct", "2e1fd397ee46e1388853d2af2c993145b0f1098a"),
         "qwen3-0.6b": ("Qwen/Qwen3-0.6B", "c1899de289a04d12100db370d81485cdf75e47ca"),
         "qwen3-1.7b": ("Qwen/Qwen3-1.7B", "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"),
+        "qwen2.5-coder-7b-instruct": ("Qwen/Qwen2.5-Coder-7B-Instruct", "c03e6d358207e414f1eca0bb1891e29f1db0e242"),
     }
     assert set(PRESETS) == set(expected)
     for name, (model, revision) in expected.items():
@@ -167,3 +170,66 @@ def test_dry_run_summary_encodes_rows_without_torch(tmp_path):
     }
     assert summary["validation"]["examples_usable"] == 1
     assert summary["validation"]["input_tokens"] == 15
+
+
+def test_qwen2_5_coder_7b_preset_is_pinned_and_redistributable():
+    entry = PRESETS["qwen2.5-coder-7b-instruct"]
+    assert entry["model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert entry["revision"] == "c03e6d358207e414f1eca0bb1891e29f1db0e242"
+    assert len(entry["revision"]) == 40
+    assert entry["license"] == "Apache-2.0"
+    assert entry["redistributable"] is True
+    resolved = resolve_base_model("qwen2.5-coder-7b-instruct")
+    assert resolved["model"] == entry["model"]
+    assert resolved["revision"] == entry["revision"]
+
+
+def test_build_bnb_config_returns_expected_fields():
+    config = build_bnb_config("nf4", "bfloat16", True)
+    assert config["load_in_4bit"] is True
+    assert config["bnb_4bit_quant_type"] == "nf4"
+    assert config["bnb_4bit_compute_dtype"] == "bfloat16"
+    assert config["bnb_4bit_use_double_quant"] is True
+
+
+def test_build_bnb_config_rejects_unknown_quant_type_deterministically():
+    with pytest.raises(ValueError, match="Unsupported 4-bit quant type"):
+        build_bnb_config("int8", "bfloat16", True)
+
+
+def test_build_bnb_config_accepts_fp4_and_rejects_bad_dtype():
+    config = build_bnb_config("fp4", "float16", False)
+    assert config["bnb_4bit_quant_type"] == "fp4"
+    assert config["bnb_4bit_compute_dtype"] == "float16"
+    assert config["bnb_4bit_use_double_quant"] is False
+    with pytest.raises(ValueError, match="Unsupported 4-bit compute dtype"):
+        build_bnb_config("nf4", "float8", True)
+
+
+def test_load_in_4bit_flag_defaults_quant_type_to_nf4():
+    parser = build_arg_parser()
+    args = parser.parse_args(
+        ["--train", "t.jsonl", "--validation", "v.jsonl", "--output", "out", "--load-in-4bit"]
+    )
+    assert args.load_in_4bit is True
+    assert args.bnb_4bit_quant_type == "nf4"
+    assert args.bnb_4bit_compute_dtype == "bfloat16"
+    assert args.bnb_4bit_double_quant is True
+
+
+def test_load_in_4bit_disabled_by_default():
+    parser = build_arg_parser()
+    args = parser.parse_args(
+        ["--train", "t.jsonl", "--validation", "v.jsonl", "--output", "out"]
+    )
+    assert args.load_in_4bit is False
+    assert args.bnb_4bit_quant_type == "nf4"
+
+
+def test_no_bnb_double_quant_flag_disables_double_quant():
+    parser = build_arg_parser()
+    args = parser.parse_args(
+        ["--train", "t.jsonl", "--validation", "v.jsonl", "--output", "out",
+         "--load-in-4bit", "--no-bnb-4bit-double-quant"]
+    )
+    assert args.bnb_4bit_double_quant is False

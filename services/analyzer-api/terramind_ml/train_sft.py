@@ -33,7 +33,18 @@ PRESETS: dict[str, dict[str, Any]] = {
         "license": "Apache-2.0",
         "redistributable": True,
     },
+    # Larger base intended for the optional 4-bit QLoRA path so it fits an 8 GB GPU.
+    "qwen2.5-coder-7b-instruct": {
+        "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+        "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+        "license": "Apache-2.0",
+        "redistributable": True,
+    },
 }
+
+#: Accepted values for the optional bitsandbytes 4-bit quantization settings.
+BNB_4BIT_QUANT_TYPES = ("nf4", "fp4")
+BNB_4BIT_COMPUTE_DTYPES = ("bfloat16", "float16", "float32")
 
 DEFAULT_PRESET = "qwen2.5-coder-1.5b-instruct"
 DEFAULT_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
@@ -56,6 +67,31 @@ def resolve_base_model(preset: str, model: str | None = None, model_revision: st
         "revision": model_revision or entry["revision"],
         "license": entry["license"],
         "redistributable": bool(entry["redistributable"]),
+    }
+
+
+def build_bnb_config(quant_type: str = "nf4", compute_dtype: str = "bfloat16", double_quant: bool = True) -> dict[str, Any]:
+    """Return the fields for a ``BitsAndBytesConfig`` as a plain, torch-free dict.
+
+    Keeping this pure lets tests validate the 4-bit configuration without importing
+    ``torch``/``bitsandbytes``; ``main()`` maps the strings onto real dtypes.
+    """
+    normalized_quant = str(quant_type).strip().lower()
+    if normalized_quant not in BNB_4BIT_QUANT_TYPES:
+        raise ValueError(
+            f"Unsupported 4-bit quant type {quant_type!r}; choose one of: {', '.join(BNB_4BIT_QUANT_TYPES)}"
+        )
+    normalized_dtype = str(compute_dtype).strip().lower()
+    if normalized_dtype not in BNB_4BIT_COMPUTE_DTYPES:
+        raise ValueError(
+            f"Unsupported 4-bit compute dtype {compute_dtype!r}; "
+            f"choose one of: {', '.join(BNB_4BIT_COMPUTE_DTYPES)}"
+        )
+    return {
+        "load_in_4bit": True,
+        "bnb_4bit_quant_type": normalized_quant,
+        "bnb_4bit_compute_dtype": normalized_dtype,
+        "bnb_4bit_use_double_quant": bool(double_quant),
     }
 
 
@@ -210,7 +246,8 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser (separated from ``main`` so tests can resolve args)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--train", type=Path, required=True)
     parser.add_argument("--validation", type=Path, required=True)
@@ -240,8 +277,23 @@ def main() -> int:
     parser.add_argument("--save-total-limit", type=int, default=2)
     parser.add_argument("--resume", action="store_true",
                         help="Resume from the latest checkpoint in the output directory")
+    parser.add_argument("--load-in-4bit", action="store_true",
+                        help="Load the base model in 4-bit (QLoRA) via bitsandbytes; lets a larger base fit an 8 GB GPU")
+    parser.add_argument("--bnb-4bit-quant-type", choices=list(BNB_4BIT_QUANT_TYPES), default="nf4",
+                        help="bitsandbytes 4-bit quantization type (only used with --load-in-4bit)")
+    parser.add_argument("--bnb-4bit-compute-dtype", choices=list(BNB_4BIT_COMPUTE_DTYPES), default="bfloat16",
+                        help="Compute dtype for 4-bit matmuls (only used with --load-in-4bit)")
+    parser.add_argument("--bnb-4bit-double-quant", dest="bnb_4bit_double_quant", action="store_true", default=True,
+                        help="Enable nested/double quantization (default; only used with --load-in-4bit)")
+    parser.add_argument("--no-bnb-4bit-double-quant", dest="bnb_4bit_double_quant", action="store_false",
+                        help="Disable nested/double quantization (only used with --load-in-4bit)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Encode/validate the data and print a summary without loading a model or CUDA")
+    return parser
+
+
+def main() -> int:
+    parser = build_arg_parser()
     args = parser.parse_args()
 
     base = resolve_base_model(args.preset, args.model, args.model_revision)
@@ -273,8 +325,13 @@ def main() -> int:
         return 0
 
     import torch
-    from peft import LoraConfig, get_peft_model
-    from transformers import AutoModelForCausalLM, AutoTokenizer, get_cosine_schedule_with_warmup
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    from transformers import (
+        AutoModelForCausalLM,
+        AutoTokenizer,
+        BitsAndBytesConfig,
+        get_cosine_schedule_with_warmup,
+    )
 
     if not torch.cuda.is_available():
         parser.error("CUDA is required for this script; install the isolated CUDA-enabled training environment first")
@@ -289,12 +346,38 @@ def main() -> int:
     if not train_rows or not eval_rows:
         parser.error("No usable train or validation examples after chat-template encoding")
 
-    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    model = AutoModelForCausalLM.from_pretrained(
-        base["model"], revision=base["revision"], dtype=dtype, trust_remote_code=False,
-    )
+    if args.load_in_4bit:
+        # QLoRA path: quantize the frozen base so a larger model fits an 8 GB GPU.
+        bnb_fields = build_bnb_config(
+            args.bnb_4bit_quant_type, args.bnb_4bit_compute_dtype, args.bnb_4bit_double_quant,
+        )
+        compute_dtype = {
+            "bfloat16": torch.bfloat16,
+            "float16": torch.float16,
+            "float32": torch.float32,
+        }[bnb_fields["bnb_4bit_compute_dtype"]]
+        model = AutoModelForCausalLM.from_pretrained(
+            base["model"],
+            revision=base["revision"],
+            quantization_config=BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type=bnb_fields["bnb_4bit_quant_type"],
+                bnb_4bit_compute_dtype=compute_dtype,
+                bnb_4bit_use_double_quant=bnb_fields["bnb_4bit_use_double_quant"],
+            ),
+            device_map={"": 0},
+            trust_remote_code=False,
+        )
+    else:
+        dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        model = AutoModelForCausalLM.from_pretrained(
+            base["model"], revision=base["revision"], dtype=dtype, trust_remote_code=False,
+        )
     model.config.use_cache = False
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    if args.load_in_4bit:
+        # Casts layer norms to fp32 and enables the input grads 4-bit PEFT training needs.
+        model = prepare_model_for_kbit_training(model)
     model = get_peft_model(model, LoraConfig(
         r=args.lora_r,
         lora_alpha=args.lora_alpha,
@@ -304,7 +387,10 @@ def main() -> int:
     ))
     # Explicitly place the model on the GPU. Relying on the Trainer to move it can
     # silently leave a PEFT model on CPU, which turns a ~1 s/step run into ~25 s/step.
-    model = model.to("cuda")
+    # A 4-bit model is already placed by bitsandbytes via device_map and must not be
+    # moved with ``.to("cuda")`` (unsupported for quantized weights).
+    if not args.load_in_4bit:
+        model = model.to("cuda")
     model.print_trainable_parameters()
     print(f"Training device: {next(model.parameters()).device}")
 
@@ -429,6 +515,18 @@ def main() -> int:
     evaluation = {"eval_loss": eval_loss}
     model.save_pretrained(args.output, safe_serialization=True)
     tokenizer.save_pretrained(args.output)
+    limitations = [
+        "Training/validation loss does not measure Terraform validity; low loss does not imply parseable, "
+        "provider-valid, safe, cost-optimized, reliable, or deployable Terraform.",
+        "Small, generated/back-translated training corpus; adapter quality is not established by loss alone.",
+        "Not evaluated as safe, provider-valid, cost-optimized, reliable, or scalable Terraform.",
+        "Evaluate against held-out executable Terraform cases before relying on generated configurations.",
+    ]
+    if args.load_in_4bit:
+        limitations.append(
+            "QLoRA 4-bit quantization (bitsandbytes) is used for the frozen base model; this trades some numerical "
+            "precision for reduced GPU memory and the resulting adapter quality may differ from full-precision LoRA."
+        )
     metadata = {
         "preset": base["preset"],
         "base_model": base["model"],
@@ -458,14 +556,13 @@ def main() -> int:
         "save_total_limit": args.save_total_limit,
         "train_metrics": train_metrics,
         "validation_metrics": evaluation,
-        "limitations": [
-            "Training/validation loss does not measure Terraform validity; low loss does not imply parseable, "
-            "provider-valid, safe, cost-optimized, reliable, or deployable Terraform.",
-            "Small, generated/back-translated training corpus; adapter quality is not established by loss alone.",
-            "Not evaluated as safe, provider-valid, cost-optimized, reliable, or scalable Terraform.",
-            "Evaluate against held-out executable Terraform cases before relying on generated configurations.",
-        ],
+        "limitations": limitations,
     }
+    if args.load_in_4bit:
+        metadata["load_in_4bit"] = True
+        metadata["bnb_4bit_quant_type"] = args.bnb_4bit_quant_type
+        metadata["bnb_4bit_compute_dtype"] = args.bnb_4bit_compute_dtype
+        metadata["bnb_4bit_use_double_quant"] = bool(args.bnb_4bit_double_quant)
     (args.output / "training-metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(metadata, indent=2))
     return 0
