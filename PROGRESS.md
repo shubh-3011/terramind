@@ -560,3 +560,4 @@ This file records real work, decisions, tests, and blockers and is included in t
 
 - Two run targets now work: the **native desktop app** (`npm run gulp vscode-win32-x64-min` → `VSCode-win32-x64\TerraMind.exe`) and the **browser workbench** (`scripts\web_live.bat` → http://localhost:8080). The analyzer (`scripts\analyzer_live.bat`) is shared.
 - Generation runs on the **GPU** (`n_gpu_layers=-1` with a CUDA `llama-cpp-python` build; ~100 tok/s vs ~15 on CPU) and reports **progress 0-100%** through the job API + workbench notification.
+- Truncated output is handled deterministically: `_trim_incomplete_hcl` drops an incomplete trailing block (tracking `{}`, `[]`, `()` and ignoring strings/comments) before parsing and before the repair prompt, and the analyzer's GGUF limit is 4096. This removed the "could not generate a draft" failures caused by the model running to the token limit (3/3 sample generations succeed).
