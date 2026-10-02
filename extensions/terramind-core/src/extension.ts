@@ -414,7 +414,9 @@ export function activate(context: vscode.ExtensionContext): void {
 			if (!generated) {
 				return;
 			}
-			await presentGeneratedDraft(context, workspaceFolder, generated);
+			// Resolve the wizard as soon as the draft exists so its Generate button
+			// re-enables; preview/save/analysis then proceed independently.
+			void presentGeneratedDraft(context, workspaceFolder, generated);
 		});
 	}));
 
@@ -593,6 +595,7 @@ export async function presentGeneratedDraft(
 	try {
 		await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(target, '..'));
 		await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(generated.terraform));
+		// Re-analyze in the background; do not block the wizards's completion on it.
 		const written = await vscode.workspace.fs.stat(target);
 		if (!written || written.size <= 0) {
 			output.appendLine(`ERROR: wrote empty file at ${describeUri(target)} (reported ${written ? written.size : 'unknown'} bytes). The draft was not persisted.`);
@@ -605,7 +608,7 @@ export async function presentGeneratedDraft(
 		const savedDocument = await vscode.workspace.openTextDocument(target);
 		await vscode.window.showTextDocument(savedDocument, { preview: false });
 		await closeUntitledDocument(preview);
-		await vscode.commands.executeCommand('terramind.analyzeWorkspace');
+		void vscode.commands.executeCommand('terramind.analyzeWorkspace');
 	} catch (error) {
 		output.appendLine(`Saving the reviewed draft to ${describeUri(target)} failed: ${getErrorMessage(error)}`);
 		output.show(true);
@@ -635,13 +638,24 @@ async function closeUntitledDocument(document: vscode.TextDocument): Promise<voi
 	}
 }
 
+/** fetch with an AbortController timeout so a stalled analyzer cannot hang the UI. */
+async function fetchWithTimeout(url: string, init: RequestInit | undefined, timeoutMs: number): Promise<Response> {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(url, { ...(init ?? {}), signal: controller.signal });
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 async function requestAnalysis(workspacePath: string, runExternalTools: boolean, workspaceTrusted: boolean): Promise<AnalysisResult> {
 	const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
-	const response = await fetch(`${analyzerUrl}/v1/analyze`, {
+	const response = await fetchWithTimeout(`${analyzerUrl}/v1/analyze`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ workspace_path: workspacePath, run_external_tools: runExternalTools, workspace_trusted: workspaceTrusted })
-	});
+	}, 120_000);
 	if (!response.ok) {
 		throw new Error(`Analyzer returned HTTP ${response.status}`);
 	}

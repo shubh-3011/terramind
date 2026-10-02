@@ -281,6 +281,7 @@ def test_generate_includes_structured_inventory_and_topology_in_model_prompt():
             "resource_inventory": "2 EC2 instances, 1 VPC, 1 S3 bucket",
             "connectivity": "Instances stay in private subnets and read from the bucket",
             "constraints": "ap-south-1; no public SSH",
+            "engine": "ollama",
         })
 
     assert response.status_code == 200
@@ -288,6 +289,32 @@ def test_generate_includes_structured_inventory_and_topology_in_model_prompt():
     assert "Requested resources and counts:\n2 EC2 instances, 1 VPC, 1 S3 bucket" in prompt
     assert "Requested connections and traffic flow:\nInstances stay in private subnets and read from the bucket" in prompt
     assert "Other constraints:\nap-south-1; no public SSH" in prompt
+
+
+def test_auto_prefers_the_scaffolder_when_an_inventory_is_provided():
+    # With a structured inventory and no forced engine, TerraMind scaffolds
+    # deterministically instead of calling the language model.
+    with patch("app.main._generate_with_ollama") as generate:
+        response = client.post("/v1/generate", json={
+            "description": "A private S3 bucket with encryption",
+            "resource_inventory": "1 S3 bucket",
+        })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["model"] == "scaffold"
+    assert body["checks"]["generation_engine"] == "scaffold"
+    assert 'resource "aws_s3_bucket"' in body["terraform"]
+    assert "aws_s3_bucket_server_side_encryption_configuration" in body["terraform"]
+    generate.assert_not_called()
+
+
+def test_explicit_scaffold_engine_rejects_unrecognised_request():
+    response = client.post("/v1/generate", json={
+        "description": "a small production environment",
+        "engine": "scaffold",
+    })
+    assert response.status_code == 422
 
 
 def test_repair_returns_validated_proposal_without_writing_workspace(tmp_path):

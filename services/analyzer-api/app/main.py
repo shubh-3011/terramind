@@ -60,7 +60,7 @@ _GENERATION_JOBS: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
 _GENERATION_JOBS_LOCK = threading.Lock()
 
 GenerationEngine = Literal["auto", "ollama", "transformers", "gguf"]
-_VALID_GENERATION_ENGINES = frozenset({"auto", "ollama", "transformers", "gguf"})
+_VALID_GENERATION_ENGINES = frozenset({"auto", "ollama", "transformers", "gguf", "scaffold"})
 
 MAX_TERRAFORM_FILES = 500
 MAX_FILE_BYTES = 1_000_000
@@ -396,6 +396,39 @@ def _run_generation(
         f"Requested connections and traffic flow:\n{request.connectivity or 'No explicit topology supplied; state assumptions in HCL comments.'}\n\n"
         f"Other constraints:\n{request.constraints or 'No extra constraints supplied.'}\n"
     )
+    # Prefer the deterministic scaffolder when a structured inventory is supplied and the
+    # caller did not force a model engine. It is instant and always provider-valid.
+    requested_engine = (request.engine or "").strip().lower()
+    has_inventory = bool(request.resource_inventory.strip())
+    if requested_engine == "scaffold" or (requested_engine in {"", "auto"} and has_inventory):
+        from app.scaffold import scaffold_terraform
+
+        scaffolded = scaffold_terraform(
+            description=request.description,
+            resource_inventory=request.resource_inventory,
+            connectivity=request.connectivity,
+            constraints=request.constraints,
+        )
+        if scaffolded is not None:
+            hcl, notes = scaffolded
+            if progress is not None:
+                progress(90, "validating")
+            response = _validated_generation_response(
+                "scaffold", hcl, request.workspace_path,
+                request.run_external_tools, request.workspace_trusted,
+            )
+            response.checks["generation_engine"] = "scaffold"
+            if notes:
+                response.checks["scaffold_notes"] = " | ".join(notes)[:1000]
+            if progress is not None:
+                progress(100, "completed")
+            return response
+        if requested_engine == "scaffold":
+            raise HTTPException(
+                status_code=422,
+                detail="The scaffolder did not recognise any supported resource in this request. Add a resource inventory, or choose another engine.",
+            )
+
     resolved_engine = _resolve_generation_engine(request.engine)
     engine_progress: Callable[[float], None] | None = None
     if progress is not None:
