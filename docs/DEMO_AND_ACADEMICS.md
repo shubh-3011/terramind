@@ -1,5 +1,7 @@
 # Demo and academic framing
 
+> **Status (2026-10-03):** the demo is now installable — **TerraMind Beta 1** is a public, portable Windows ZIP (`v0.1.0-beta.1`); the launcher downloads the model on first run. Use **TerraMind: Analyze Demo Fixture** from the Command Palette for a no-setup walkthrough. See [../README.md](../README.md) and [DISTRIBUTION.md](DISTRIBUTION.md).
+
 ## Current prototype demo (2-3 minutes)
 
 1. Start the FastAPI service on loopback and Ollama with the configured coder model; open a small Terraform workspace in a TerraMind development window (once the Code-OSS app build is verified).

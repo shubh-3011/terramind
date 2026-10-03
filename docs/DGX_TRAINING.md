@@ -1,5 +1,7 @@
 # Training on a DGX (or any big GPU) and shipping to a small GPU
 
+> **Status (2026-10-03):** confirmed target hardware is a **DGX H200 (141 GB/GPU)** — one GPU holds the 27 B teacher bf16 (~56 GB) and trains 7 B/14 B/32 B at 8192 context. `scripts/dgx_train.sh <mode>` does train → merge → `Q4_K_M` export; the student ships and runs on an 8 GB PC.
+
 ## The short answer
 **Yes — you can fine-tune a much bigger model on a college DGX and still run it efficiently
 on your 8 GB RTX 4060.** What matters for the *user's* experience is only **which base model

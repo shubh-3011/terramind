@@ -1,5 +1,7 @@
 # Dataset and ML protocol
 
+> **Status (2026-10-03):** the generation corpus is `SASVAAI/terraform-multicloud` (CC-BY-4.0; 72,150 train / 3,825 validation rows prepared, repo-disjoint). Findings that shaped the plan: **37 % of targets exceed our 512-token window** and **82.5 % reference undeclared `var.*`** (fragment files), which is why a larger retrain (v3) did not help. The plan is a *normalize → `terraform validate` → dedupe* "golden corpus" plus DGX distillation; `galcan/terraform_sec` (Apache-2.0, tfsec labels) is earmarked for the **risk/scoring** model.
+
 > **Status (2026-09-29):** the experimental risk baseline uses 46 generated AWS cases and 23 paired controls; its limits are in [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md). A distinct pinned and license-aware HCL generation-data preparation pipeline is described in [GENERATIVE_TRAINING.md](GENERATIVE_TRAINING.md). The SFT corpus is not a security/outage/cost label source. Independently reviewed labels, external validation, calibration, and a fine-tuned generator remain future work.
 
 ## Research question

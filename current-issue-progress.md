@@ -1,6 +1,6 @@
 # TerraMind — current state, how to run it, and open issues
 
-_Last updated: 2026-10-02. Branch: `testing` (mirrored to the default branch `main`)._
+_Last updated: 2026-10-03. Repository: **public** (`github.com/shubh-3011/terramind`). Branch: `main` (kept in sync with `testing`)._
 
 This is the single-page orientation doc: what TerraMind is, what is finished, exactly how to
 run it, what AI it uses, and what is still broken or weak.
@@ -9,8 +9,8 @@ run it, what AI it uses, and what is still broken or weak.
 
 ## 1. What TerraMind is
 
-TerraMind is a **private, open-source-targeted Code-OSS fork for Terraform** (not a Marketplace
-extension). Terraform intelligence is bundled into the editor: it can **analyse** a workspace,
+TerraMind is an **open-source (public) Code-OSS fork for Terraform** (not a Marketplace
+extension) — repository: `https://github.com/shubh-3011/terramind`. Terraform intelligence is bundled into the editor: it can **analyse** a workspace,
 **score** it, **recommend** fixes, and **generate** Terraform from a prompt or a resource
 inventory. It ships its **own local model** and needs **no Ollama** for the default path.
 
@@ -27,15 +27,17 @@ Both talk to the same local **FastAPI analyzer** at `http://127.0.0.1:8000`.
 
 | Area | State |
 | --- | --- |
-| Desktop app (native Windows) | **Works** — the window opens; workbench + extension load |
+| Desktop app (native Windows) | **Works and released** — portable **Beta 1** (`v0.1.0-beta.1`, Windows x64) |
 | Browser workbench | **Works** (http://localhost:8080) |
+| Distribution | **One unzip-and-run ZIP** (app + bundled analyzer + CPU Python); the model downloads on first run |
 | Extension UI | Wizard (guided form), TerraMind Report panel, dashboard, diagnostics, health check, demo-fixture analysis, repair diff flow |
 | Analyzer API | **66 deterministic AWS/general/Azure/GCP rules**, per-service ratings (security/reliability/maintainability), prioritized recommendations, workspace allowlist, opt-in `fmt`/`validate`/TFLint/Checkov |
 | Deterministic **scaffolder** | **Works** — inventory → valid, secure AWS Terraform with no model (0.1–0.5 s) |
-| Local AI model | Fine-tuned `Qwen2.5-Coder-1.5B` (Apache-2.0), **940 MB Q4_K_M GGUF**, auto-discovered, runs on the **GPU** via llama.cpp (~100 tok/s) |
+| Local AI model | Fine-tuned `Qwen2.5-Coder-1.5B` (Apache-2.0), **940 MB Q4_K_M GGUF**, auto-discovered and **downloaded on first run**; ~83 % parse / ~33 % `terraform validate` on 12 held-out examples |
 | Generation progress | Real percentage (`0–100 %`) via a job API + cancellable notification |
 | Tests | **171 passing** (analyzer/data/training/eval); extension TypeScript check clean |
-| Git | Everything committed to `main` + `testing` |
+| Repository | **Public** (`github.com/shubh-3011/terramind`); `main` and `testing` in sync |
+| CI | GitHub Actions **disabled**; inherited VS Code workflows + Dependabot removed |
 
 **Overall estimate:** roughly **70–75 %** of the agreed MVP scope by milestone coverage — a
 usable prototype/demo, **not** a production tool.
@@ -50,7 +52,15 @@ usable prototype/demo, **not** a production tool.
 - Bundled model at `services\analyzer-api\models\terramind-qwen2.5-coder-v2-merged-Q4_K_M.gguf`.
 - Built app at `C:\Users\shubh\Downloads\VSCode-win32-x64\TerraMind.exe`.
 
-### A. The native desktop app (recommended)
+### 0. Download the beta (no setup at all)
+
+Grab `TerraMind-beta1-win32-x64-full.zip` from
+[Releases](https://github.com/shubh-3011/terramind/releases/latest), extract it, and run
+`TerraMind.bat`. The launcher downloads the model (~940 MB) on first run into
+`%USERPROFILE%\.terramind\models\`, starts the bundled analyzer, and opens the app. No Python,
+Node, Ollama, or GPU required. See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
+
+### A. The native desktop app (from source)
 
 1. **Start the analyzer** (leave the window open):
    ```
@@ -111,9 +121,12 @@ Three separate things, deliberately labelled apart in the UI:
 2. **Local generative model** — a **LoRA fine-tune of `Qwen/Qwen2.5-Coder-1.5B-Instruct`**
    (Apache-2.0, pinned revision `2e1fd397ee46e1388853d2af2c993145b0f1098a`), trained on
    20,000 **multi-cloud** Terraform examples (2 epochs; train loss 0.424, eval loss 0.460) and
-   exported to a **940 MB `Q4_K_M` GGUF**. It runs offline through **`llama-cpp-python`**
-   (CUDA build) on the **RTX 4060 (~100 tok/s)**. No Ollama required; Ollama and Transformers
-   backends remain optional.
+   exported to a **940 MB `Q4_K_M` GGUF**. It runs offline through **`llama-cpp-python`** — the
+   dev machine uses the CUDA build (~100 tok/s on the RTX 4060); the **portable beta ships a
+   CPU build** (~10–25 tok/s) so it runs on any PC. No Ollama required; Ollama and Transformers
+   backends remain optional. A v3 retrain on a larger mixed corpus was evaluated and **rejected**
+   (67 % parse vs 83 %), so v2 stays bundled; the next lever is DGX distillation
+   ([docs/DISTILLATION.md](docs/DISTILLATION.md)).
 3. **Experimental ML risk model** — a small logistic-regression classifier (46 benchmark
    examples) that estimates a benchmark-control risk probability. It is **uncalibrated** and
    shown separately from scanner findings.
@@ -148,8 +161,10 @@ Transformers → Ollama). Explicit `scaffold` / `gguf` / `ollama` / `transformer
    `VSCode-win32-x64\resources\app\extensions\terramind-core\out`.
 5. **Browser folder access** needs Edge/Chrome (or enabling the File System Access API flag in
    Brave); otherwise use **Analyze Demo Fixture**.
-6. **CI is blocked**: GitHub-hosted checks do not run because of an account payment/spending
-   limit; hosted packaging artifacts are therefore unverified.
+6. **CI is disabled.** The inherited Code-OSS workflows and Dependabot config were **removed**,
+   and GitHub Actions is turned **off** at the repository level (the account's Actions billing is
+   blocked, which previously produced one failure email per workflow per push). The two TerraMind
+   workflows remain in the repo, ready to re-enable.
 7. Repo hygiene: `.build/`, model weights (`*.gguf`), venvs, and local launch state are
    git-ignored; the model must be shipped as a **release asset** (see `docs/OPEN_SOURCE.md`),
    not committed.
@@ -166,17 +181,21 @@ Transformers → Ollama). Explicit `scaffold` / `gguf` / `ollama` / `transformer
 
 ## 6. Suggested next steps
 
-1. **Make the desktop launch reproducible**: rebuild the package from the current source so the
-   scaffolder, save-flow fix, and timeouts are in the shipped `.exe`.
-2. **Improve the model on a bigger GPU (the real lever).** The 1.5 B has hit its ceiling — a
-   larger training mix *reduced* its parse rate, so extra data is not the fix. Fine-tune
-   **`Qwen2.5-Coder-7B-Instruct`** (Apache-2.0) on the college DGX with `scripts/dgx_train.sh 7b`,
-   export **Q4_K_M (~4.4 GB)**, and ship it alongside the 1.5 B; it fits the dev RTX 4060 (8 GB)
-   at ~25–45 tok/s and needs no change to the runtime. See `docs/DGX_TRAINING.md`.
-3. **Broaden the scaffolder** (Azure/GCP, RDS, EKS) and add `terraform validate` to the
+1. **Keep the beta current**: rebuild the package from source and re-attach it to the next release
+   after any extension change (the shipped `.exe` is a snapshot).
+2. **Move model hosting to Hugging Face** (one variable in `TerraMind.bat`: `MODEL_URL`) for a
+   better CDN and resumable downloads; the GitHub release asset works today.
+3. **Ship a GPU variant** as a separate release asset (CUDA `llama-cpp-python`,
+   `n_gpu_layers=-1`).
+4. **Improve the model on a bigger GPU (the real lever).** The 1.5 B has hit its ceiling. Two
+   paths, both on the college **DGX H200**: (a) fine-tune `Qwen2.5-Coder-7B` at 8192 context
+   (`scripts/dgx_train.sh 7b`), or (b) **distil** a 27 B teacher into the small model
+   (`scripts/dgx_distill.sh` → `scripts/dgx_train.sh`). See `docs/DGX_TRAINING.md` and
+   `docs/DISTILLATION.md`.
+5. **Broaden the scaffolder** (Azure/GCP, RDS, EKS) and add `terraform validate` to the
    scaffolder test suite.
-4. **Unblock CI** (GitHub billing) so packaging and checks run and `main` can be merged normally.
-5. **Evaluate**: run the held-out generator evaluation at a larger sample with a provider cache.
+6. **Re-enable CI when billing allows**; the two TerraMind workflows are still present.
+7. **Evaluate** at a larger sample (e.g. 40 examples) with a provider cache.
 
 ---
 
@@ -187,8 +206,8 @@ PLAN.md, PROGRESS.md, ARCHITECTURE.md, README.md   project docs (this file is th
 current-issue-progress.md                          this file
 services/analyzer-api/app/                         analyzer: main.py, rules/, ratings.py, recommendations.py,
                                                     scaffold.py, llama_cpp_backend.py, generated_validator.py
-services/analyzer-api/models/                      bundled GGUF (git-ignored)
-services/analyzer-api/tests/                       analyzer/scaffold/ML tests (157 passing)
+services/analyzer-api/models/                      bundled GGUF (git-ignored; downloaded to %USERPROFILE%\.terramind\models\ in the beta)
+services/analyzer-api/tests/                       analyzer/scaffold/ML tests (171 passing)
 extensions/terramind-core/                         bundled extension (wizard, report, dashboard)
 scripts/                                           *_live.bat launchers (analyzer, web, train, export, eval)
 docs/                                              RUNNING_LOCAL_MODEL.md, MODEL_CARD.md, OPEN_SOURCE.md, ...

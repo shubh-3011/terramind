@@ -1,5 +1,7 @@
 # Model strategy: self-train versus reuse an existing code model
 
+> **Status (2026-10-03):** we ship a self-trained 1.5 B LoRA (v2) as the lightweight default and plan a **larger teacher/distillation** path on a DGX. The size/hardware matrix below still holds: an 8 GB GPU runs up to ~7 B `Q4_K_M` (~4.4 GB) at ~25–45 tok/s. See [DISTILLATION.md](DISTILLATION.md).
+
 ## Question
 
 Should TerraMind keep fine-tuning a tiny Qwen3 base for Terraform generation, or use an

@@ -1,5 +1,7 @@
 # Local Terraform generation and optional training data
 
+> **Status (2026-10-03):** the shipped generator is v2 (LoRA of `Qwen2.5-Coder-1.5B`, `Q4_K_M`, ~83 % parse / ~33 % `terraform validate` on 12 held-out); a larger v3 retrain was **rejected**. Training runs: local 1.5 B is the practical ceiling on an 8 GB GPU (a 4 B/7 B merge does not fit 16 GB RAM). The next step is **DGX distillation** — see [DISTILLATION.md](DISTILLATION.md) and [DGX_TRAINING.md](DGX_TRAINING.md).
+
 ## What is implemented
 
 The built-in **Generate Infrastructure** command collects a resource/connectivity description and constraints, calls a locally hosted Ollama model through the loopback-only analyzer API, parses the returned text as HCL, and opens it for review. Nothing is written until the user selects **Save Draft to Workspace**, chooses a path inside the open workspace, and confirms any overwrite. The saved draft is then sent through workspace analysis.

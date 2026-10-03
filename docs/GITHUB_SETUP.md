@@ -1,5 +1,7 @@
 # Private GitHub repository
 
+> **Status (2026-10-03):** this document is historical — the repository is now **public**. GitHub Actions is **disabled** at the repository level, the inherited Code-OSS workflows (`pr*.yml`, `codeql.yml`, `monaco-editor.yml`, …) and `.github/dependabot.yml` were **removed** (they failed on every push under the account's Actions billing block), and only `terramind-builds.yml` + `terramind-ml-validation.yml` remain. `main` and `testing` are kept in sync.
+
 The repository is already created and pushed as a private repository:
 [shubh-3011/terramind](https://github.com/shubh-3011/terramind).
 

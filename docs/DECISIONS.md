@@ -1,5 +1,7 @@
 # Architecture decisions
 
+> **Status (2026-10-03):** the project ships a portable Windows beta (see [DISTRIBUTION.md](DISTRIBUTION.md)); the repository is public; GitHub Actions is disabled. The bundled model is v2 (a v3 retrain was rejected). The risk model remains an uncalibrated 46-case prototype; `galcan/terraform_sec` is the planned replacement.
+
 ## D-001: Ship TerraMind as a Code-OSS fork
 
 **Status:** accepted; implementation scaffolded.

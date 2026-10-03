@@ -1,5 +1,7 @@
 # TerraMind Code-OSS fork strategy
 
+> **Status (2026-10-03):** the fork is built and shipped — `npm run gulp vscode-win32-x64-min` produces `VSCode-win32-x64\TerraMind.exe`, which is packaged into the public **Beta 1** portable ZIP (app + bundled analyzer + launcher). The earlier `@vscode/policy-watcher` startup hang is fixed. See [DISTRIBUTION.md](DISTRIBUTION.md).
+
 ## Decision
 
 TerraMind will be a separate desktop editor built from the open-source Code-OSS repository, not a Marketplace extension. Users install and launch **TerraMind** as their editor; its Terraform intelligence features are built in.

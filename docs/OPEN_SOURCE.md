@@ -1,5 +1,7 @@
 # Open-sourcing TerraMind: release checklist
 
+> **Status (2026-10-03):** the repository is now **public** (`github.com/shubh-3011/terramind`) and **TerraMind Beta 1** is published as a portable Windows ZIP on the `v0.1.0-beta.1` release (app + bundled analyzer + first-run model download). See [DISTRIBUTION.md](DISTRIBUTION.md) and [../README.md](../README.md). Remaining: move model hosting to Hugging Face, ship a GPU variant.
+
 This is a practical, honest checklist for publishing TerraMind as an open-source project. It
 covers the two licenses that govern the **code**, the attribution obligations for the **model and
 dataset**, where to host the **GGUF**, and how end users run the model **without installing their

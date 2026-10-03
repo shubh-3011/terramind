@@ -1,5 +1,7 @@
 # TerraMind Terraform Generator - Model Card
 
+> **Status (2026-10-03):** the shipped model is **v2** (LoRA of `Qwen/Qwen2.5-Coder-1.5B-Instruct`, 940 MB `Q4_K_M`). On 12 held-out examples it parses **~83 %** and passes `terraform validate` **~33 %** — a review-required draft assistant. A larger **v3** retrain (8k generated + 12k security-filtered examples) was evaluated and **rejected** (67 % / 33 %). The model is distributed as a release asset and downloaded on first run. Next lever: DGX distillation ([DISTILLATION.md](DISTILLATION.md)).
+
 This is the model card for the optional, locally hosted **Terraform generation** model that
 ships with TerraMind. It is a small instruction-tuned code model, exported to GGUF and run
 on the user's own machine through llama.cpp. It drafts Terraform HCL for review; it does not

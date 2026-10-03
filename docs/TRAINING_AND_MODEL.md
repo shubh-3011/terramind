@@ -1,5 +1,7 @@
 # TerraMind risk-model prototype
 
+> **Status (2026-10-03):** the trained risk model remains an **uncalibrated 46-example** logistic baseline and should not drive decisions. The planned replacement is trained on `galcan/terraform_sec` (Apache-2.0; ~62k tfsec-labelled projects, secure/insecure split), which is the natural home for a real risk/score model — its **secure split** is also candidate clean SFT data for the generator. See [DATASET_AND_ML.md](DATASET_AND_ML.md).
+
 ## What this model does—and does not do
 
 TerraMind now has a small, reproducible traditional-ML baseline. It is a standardized logistic-regression classifier trained to estimate whether a Terraform configuration violates a named security control represented in a controlled benchmark. It is **not** a foundation model, a Terraform code generator, a deployment-failure predictor, or a guarantee about AWS security, uptime, scalability, or cost.

@@ -1,5 +1,7 @@
 # Running TerraMind with the bundled local model (no Ollama)
 
+> **Status (2026-10-03):** in the portable **Beta 1** release the model is **downloaded on first run** by `TerraMind.bat` into `%USERPROFILE%\.terramind\models\` (the analyzer auto-discovers it), and the bundled analyzer uses a **CPU** `llama-cpp-python` build so it runs on any PC. The dev machine can still use the CUDA build (`n_gpu_layers=-1`). See [DISTRIBUTION.md](DISTRIBUTION.md).
+
 TerraMind ships an optional, locally hosted Terraform generator: a LoRA fine-tune of
 `Qwen/Qwen2.5-Coder-1.5B-Instruct`, exported to a quantized GGUF and run through
 `llama-cpp-python` (llama.cpp). It drafts Terraform HCL for review and never deploys

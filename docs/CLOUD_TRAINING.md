@@ -1,5 +1,7 @@
 # Training TerraMind on a cloud / borrowed GPU
 
+> **Status (2026-10-03):** a college **DGX H200 (141 GB/GPU)** is available, which covers the big-GPU paths below directly; cloud rental is a fallback only. See [DGX_TRAINING.md](DGX_TRAINING.md) and [DISTILLATION.md](DISTILLATION.md).
+
 The developer laptop (8 GB VRAM, 16 GB RAM) can fine-tune the 1.5 B model but not a 4 B/7 B
 one. Use one of these instead. The self-contained kit is `terramind-training-kit.zip`
 (code + `data/train.jsonl` + `data/validation.jsonl` + `cloud_train.sh`).

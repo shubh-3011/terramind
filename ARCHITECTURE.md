@@ -1,5 +1,7 @@
 # TerraMind architecture and API contracts
 
+> **Update (2026-10-03):** TerraMind ships as a **portable Windows beta** (`v0.1.0-beta.1`). The release ZIP bundles the app, the extension, and the **analyzer** (with a portable **CPU** Python); a launcher (`TerraMind.bat`) downloads the **940 MB GGUF to `%USERPROFILE%\.terramind\models\` on first run**, starts the analyzer on `127.0.0.1:8000`, then opens the app. The default generation engine is the bundled **`llama-cpp-python` GGUF** backend (`TERRAMIND_GENERATION_ENGINE=gguf`); Ollama and an explicit Transformers model remain optional. A deterministic **scaffolder** (`app/scaffold.py`) is used automatically when a resource inventory is provided. See [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
+
 TerraMind is a Code-OSS fork. Its Terraform-specific commands and panels are built into the application source and intended to ship with TerraMind desktop downloads. They are not a separately installed Marketplace extension.
 
 ## Component responsibilities
@@ -7,11 +9,11 @@ TerraMind is a Code-OSS fork. Its Terraform-specific commands and panels are bui
 | Component | Responsibility | Must not do |
 | --- | --- | --- |
 | TerraMind workbench | Collect user intent, invoke API, display diagnostics/report/diff, request user confirmation | Run `apply`, decide risk, or trust LLM output without report evidence |
-| Analyzer API | Validate requests, parse bounded workspaces, optionally call static tools, invoke the experimental model and local Ollama or explicit local Transformers generation backend | Persist credentials or write generated source |
+| Analyzer API | Validate requests, parse bounded workspaces, optionally call static tools, invoke the experimental risk model, the deterministic **scaffolder**, and the bundled **GGUF** engine (Ollama/Transformers optional) | Persist credentials or write generated source |
 | Tool adapters | Run opt-in `terraform fmt`, pre-initialized `terraform validate`, TFLint and Checkov with timeouts, JSON capture, isolated user-home, and cloud credential scrubbing | Run `init`, `plan`, or `apply`; interpret LLM prose as tool output |
 | Feature extractor | Parse Terraform/static reports into versioned numeric/categorical features | Label data from a test split |
 | ML service/module | Load versioned trained model; return class, probability, calibration/version metadata | Replace deterministic findings |
-| Local generation adapter | Generate Terraform drafts from bounded prompts using Ollama by default or an offline-only merged Transformers model when `TERRAMIND_HF_MODEL_PATH` is configured | Apply files or certify correctness |
+| Local generation adapter | Generate Terraform drafts from bounded prompts using the bundled **GGUF** engine (`llama-cpp-python`, no Ollama), or Ollama / an explicit merged Transformers model when `TERRAMIND_HF_MODEL_PATH` is set | Apply files or certify correctness |
 
 ## TerraMind workbench user interface
 
