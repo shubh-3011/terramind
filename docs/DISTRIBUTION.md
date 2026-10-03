@@ -1,5 +1,9 @@
 # Distributing TerraMind (portable Windows build)
 
+> **Status (2026-10-03):** the model is now hosted on **Hugging Face** (primary), with the GitHub
+> release asset kept as a **fallback**. The launcher and build script are version-controlled in
+> `packaging/`. See [REPOSITORY_SETUP.md](REPOSITORY_SETUP.md) for the public/private repo split.
+
 ## What ships
 A single portable ZIP (`TerraMind-beta1-win32-x64-full.zip`) that unzips into:
 
@@ -19,6 +23,11 @@ TerraMind-beta1-win32-x64-full/
 
 Sizes: app ~1.35 GB, analyzer ~245 MB, model **not** bundled (see below). ZIP ≈ 600 MB.
 
+The launcher (`TerraMind.bat`) and the script that assembles the ZIP are version-controlled in the
+**[`packaging/`](../packaging/)** folder; that folder is the source of truth for the portable
+build. Edit `packaging/TerraMind.bat` there, then rebuild/re-release — do not maintain a launcher
+only in local build output.
+
 ## Why the model is downloaded, not bundled
 - The Q4_K_M GGUF is ~940 MB. Bundling it pushes the ZIP past 1.6 GB and burns release storage
   for every release, even though the file never changes.
@@ -26,18 +35,30 @@ Sizes: app ~1.35 GB, analyzer ~245 MB, model **not** bundled (see below). ZIP �
   `%USERPROFILE%\.terramind\models\`, where the analyzer's own discovery already looks.
 
 ## Where the model is hosted
-Single source of truth: the `MODEL_URL` variable at the top of `TerraMind.bat`. It currently
-points at a **GitHub Release asset**:
+Single source of truth: the `MODEL_URL` variable at the top of `packaging/TerraMind.bat`. It now
+points at **Hugging Face** as the **primary** host:
+
+```
+https://huggingface.co/shubh-3011/terramind-qwen2.5-coder-1.5b-terraform/resolve/main/terramind-qwen2.5-coder-v2-merged-Q4_K_M.gguf
+```
+
+The **GitHub release asset** is retained as a **fallback** (download it if Hugging Face is
+unreachable or for offline mirroring):
 
 ```
 https://github.com/shubh-3011/terramind/releases/download/v0.1.0-beta.1/terramind-qwen2.5-coder-v2-merged-Q4_K_M.gguf
 ```
 
-**To move it to Hugging Face** (better CDN, resumable, versioned):
-1. Create a model repo, e.g. `shubh/terramind-model`, and upload the GGUF.
-2. Set `MODEL_URL` to the direct file URL
-   (`https://huggingface.co/shubh/terramind-model/resolve/main/terramind-....gguf`) and rebuild
-   the ZIP (or just edit `TerraMind.bat` and re-zip).
+Hugging Face gives a better CDN, resumable and versioned downloads, and clearer model metadata.
+Both sources are public, so no credentials are required.
+
+**To change `MODEL_URL`:**
+1. Upload the GGUF to the Hugging Face repo
+   ([`shubh-3011/terramind-qwen2.5-coder-1.5b-terraform`](https://huggingface.co/shubh-3011/terramind-qwen2.5-coder-1.5b-terraform))
+   and copy its direct `.../resolve/main/<file>.gguf` URL.
+2. Edit `MODEL_URL` at the top of `packaging/TerraMind.bat` and rebuild the ZIP (or just edit the
+   launcher and re-zip). Record the new SHA-256 for download verification.
+3. Update [MODEL_CARD.md](MODEL_CARD.md) and this document if the artifact name or checksum changes.
 No other change is needed — the launcher and the analyzer are agnostic to the host.
 
 ## Building the analyzer payload (dev machine)

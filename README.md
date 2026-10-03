@@ -8,6 +8,7 @@ cloud API, no account.
 
 - Repository: **https://github.com/shubh-3011/terramind** (public)
 - Releases: **https://github.com/shubh-3011/terramind/releases**
+- Model: **https://huggingface.co/shubh-3011/terramind-qwen2.5-coder-1.5b-terraform** (Hugging Face, public)
 
 ---
 
@@ -29,8 +30,8 @@ Then press `Ctrl+Shift+P`:
 - **TerraMind: Generate Infrastructure (Guided)** — e.g. `VPC 2, EC2 2, S3 bucket 1`
 - **TerraMind: Analyze Terraform Workspace** — open a `.tf` folder first
 
-The packaging model (and how to move model hosting to Hugging Face) is documented in
-[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
+The packaging model and model hosting (Hugging Face primary, GitHub release fallback) are documented
+in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 ---
 
@@ -112,6 +113,7 @@ default and opt-in via `terramind.analysis.runExternalTools`.
 
 | Doc | What it covers |
 | --- | --- |
+| [docs/REPOSITORY_SETUP.md](docs/REPOSITORY_SETUP.md) | Public/private repos, remotes, model hosting, releases, and CI |
 | [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) | How the portable beta is built and shipped |
 | [docs/RUNNING_LOCAL_MODEL.md](docs/RUNNING_LOCAL_MODEL.md) | The bundled GGUF engine |
 | [docs/MODEL_STRATEGY.md](docs/MODEL_STRATEGY.md) | Model-size / hardware matrix |
@@ -121,6 +123,11 @@ default and opt-in via `terramind.analysis.runExternalTools`.
 
 Internal planning notes (`PLAN.md`, `PROGRESS.md`, `ARCHITECTURE.md`, `current-issue-progress.md`)
 are kept **local** and are not published to this repository.
+
+Contributors: development happens on the private mirror
+([`shubh-3011/terramind-dev`](https://github.com/shubh-3011/terramind-dev), remote `dev`, `testing`
+branch); this public repository publishes only `main` — see
+[docs/REPOSITORY_SETUP.md](docs/REPOSITORY_SETUP.md).
 
 ---
 
