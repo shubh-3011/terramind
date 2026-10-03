@@ -97,3 +97,9 @@ dist
 .v[0-9]*/
 # Local agent validation evidence
 .agent-validation/
+
+# Internal planning notes kept local only (not published)
+PLAN.md
+PROGRESS.md
+ARCHITECTURE.md
+current-issue-progress.md

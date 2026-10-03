@@ -112,14 +112,15 @@ default and opt-in via `terramind.analysis.runExternalTools`.
 
 | Doc | What it covers |
 | --- | --- |
-| [current-issue-progress.md](current-issue-progress.md) | Single-page orientation: state, how to run, open issues |
-| [PROGRESS.md](PROGRESS.md) | Dated engineering log |
-| [PLAN.md](PLAN.md) / [ARCHITECTURE.md](ARCHITECTURE.md) | Roadmap and design contracts |
 | [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) | How the portable beta is built and shipped |
-| [docs/RUNNING_LOCAL_MODEL.md](docs/RUNNING_LOCAL_MODEL.md) | Bundled GGUF engine |
-| [docs/DISTILLATION.md](docs/DISTILLATION.md) / [docs/DGX_TRAINING.md](docs/DGX_TRAINING.md) | Big-GPU training and distillation |
+| [docs/RUNNING_LOCAL_MODEL.md](docs/RUNNING_LOCAL_MODEL.md) | The bundled GGUF engine |
+| [docs/MODEL_STRATEGY.md](docs/MODEL_STRATEGY.md) | Model-size / hardware matrix |
 | [docs/MODEL_CARD.md](docs/MODEL_CARD.md) | The shipped model, data, and licences |
+| [docs/DISTILLATION.md](docs/DISTILLATION.md) / [docs/DGX_TRAINING.md](docs/DGX_TRAINING.md) | Big-GPU training and distillation |
 | [docs/OPEN_SOURCE.md](docs/OPEN_SOURCE.md) | Licensing and open-source readiness |
+
+Internal planning notes (`PLAN.md`, `PROGRESS.md`, `ARCHITECTURE.md`, `current-issue-progress.md`)
+are kept **local** and are not published to this repository.
 
 ---
 

@@ -7,7 +7,7 @@
 Should TerraMind keep fine-tuning a tiny Qwen3 base for Terraform generation, or use an
 existing pre-trained code model as the generator? This document answers that question with
 the evidence already recorded in [GENERATIVE_TRAINING.md](GENERATIVE_TRAINING.md),
-[TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md), and [../PROGRESS.md](../PROGRESS.md).
+[TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md), and the local progress log.
 It is a decision record, not a benchmark result.
 
 ## What we already tried
@@ -133,5 +133,5 @@ These make local generation feel interactive without pretending the model is cor
   the Ollama Safetensors rejection.
 - [TRAINING_AND_MODEL.md](TRAINING_AND_MODEL.md) - the separate risk model and the "keep code
   generation in a separate local LLM adapter" decision.
-- [../PROGRESS.md](../PROGRESS.md) - dated observed-on-this-machine measurements and CI/blocker
+- the local progress log - dated observed-on-this-machine measurements and CI/blocker
   state.
