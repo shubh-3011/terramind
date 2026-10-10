@@ -147,7 +147,7 @@ def _phrase(kind: str, n: int, iam_style: str, rng: random.Random) -> str:
     return rng.choice(_form_set(n, singular, plural, alias))
 
 
-def _natural_join(items: list[str], rng: random.Random) -> str:
+def _natural_join(items: list[str]) -> str:
     if len(items) == 1:
         return items[0]
     if len(items) == 2:
@@ -165,7 +165,7 @@ def _build_inventory(phrases: dict[str, str], rng: random.Random) -> str:
 def _build_description(phrases: dict[str, str], region: str, rng: random.Random) -> str:
     present = sorted(phrases)
     mentioned = rng.sample(present, min(len(present), rng.randint(1, 3)))
-    summary = _natural_join([phrases[kind] for kind in mentioned], rng)
+    summary = _natural_join([phrases[kind] for kind in mentioned])
     opener = rng.choice(("We need", "Please provision", "Stand up", "Create", "Deploy", "Design"))
     environment = rng.choice(("production", "staging", "development", "sandbox"))
     statement = f"{opener} {summary} in {region} for the {environment} environment."
