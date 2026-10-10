@@ -102,6 +102,7 @@ class GenerateRequest(BaseModel):
     connectivity: str = Field(default="", max_length=4_000)
     constraints: str = Field(default="", max_length=10_000)
     model: str | None = Field(default=None, min_length=1, max_length=100)
+    model_id: str | None = Field(default=None, max_length=260)
     engine: GenerationEngine | None = Field(default=None)
     workspace_path: str | None = Field(default=None, max_length=4096)
     run_external_tools: bool = False
@@ -309,6 +310,17 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
     )
 
 
+@app.get("/v1/models")
+def list_models() -> dict[str, Any]:
+    """List the bundled GGUF models available for selection, plus the active default."""
+    active = _discover_gguf_model()
+    return {
+        "engine": _resolve_generation_engine(None),
+        "active_id": Path(active).name if active else None,
+        "models": _list_gguf_models(),
+    }
+
+
 @app.post("/v1/generate", response_model=GenerateResponse)
 def generate_terraform(request: GenerateRequest) -> GenerateResponse:
     """Generate an HCL draft with local Ollama or an explicitly configured local HF model."""
@@ -447,7 +459,7 @@ def _run_generation(
             engine_progress = _token_progress
         else:
             report(20, "generating")
-    generator = _configured_generator(model, request.engine, engine_progress)
+    generator = _configured_generator(model, request.engine, engine_progress, model_id=request.model_id)
 
     current_prompt = prompt
     initial_feedback: str | None = None
@@ -536,6 +548,49 @@ def _gguf_search_dirs() -> list[Path]:
     return directories
 
 
+def _list_gguf_models() -> list[dict[str, Any]]:
+    """List the bundled GGUF models available in the search directories."""
+    seen: set[str] = set()
+    models: list[dict[str, Any]] = []
+    active = _discover_gguf_model()
+    for directory in _gguf_search_dirs():
+        try:
+            if not directory.is_dir():
+                continue
+            for candidate in sorted(directory.glob("*.gguf")):
+                resolved = str(candidate.resolve())
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                try:
+                    size_mb: float | None = round(candidate.stat().st_size / (1024 * 1024), 1)
+                except OSError:
+                    size_mb = None
+                models.append({
+                    "id": candidate.name,
+                    "name": candidate.stem,
+                    "path": resolved,
+                    "size_mb": size_mb,
+                    "active": resolved == active,
+                })
+        except OSError:
+            continue
+    return models
+
+
+def _resolve_gguf_model_path(model_id: str | None) -> str | None:
+    """Map a listed model id/name to its path. Unknown ids are rejected (no arbitrary paths)."""
+    if not model_id:
+        return None
+    for entry in _list_gguf_models():
+        if model_id in {entry["id"], entry["name"]}:
+            return entry["path"]
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unknown model_id {model_id!r}. Call GET /v1/models for the available models.",
+    )
+
+
 def _discover_gguf_model() -> str | None:
     """Find the bundled Terraform GGUF so it works with no configuration at all.
 
@@ -606,8 +661,9 @@ def _resolve_generation_engine(engine: str | None) -> str:
 def _configured_generator(
     model: str, engine: str | None = None,
     on_progress: Callable[[float], None] | None = None,
+    model_id: str | None = None,
 ) -> Callable[[str], tuple[str, str]]:
-    gguf_model_path = _discover_gguf_model() or ""
+    gguf_model_path = _resolve_gguf_model_path(model_id) or (_discover_gguf_model() or "")
     hf_model_path = os.environ.get("TERRAMIND_HF_MODEL_PATH", "").strip()
     resolved_engine = _resolve_engine(
         engine, bool(gguf_model_path), bool(hf_model_path),

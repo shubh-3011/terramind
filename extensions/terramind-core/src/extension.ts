@@ -7,6 +7,9 @@ import * as vscode from 'vscode';
 import { openGenerateWizard } from './generateView';
 import { showReport } from './reportView';
 
+/** The GGUF model id selected via `TerraMind: Select Model`, or undefined for the default. */
+let selectedModelId: string | undefined;
+
 export interface AnalysisResult {
 	readonly terraform_file_count: number;
 	readonly parsed_file_count: number;
@@ -174,6 +177,45 @@ export function activate(context: vscode.ExtensionContext): void {
 		}
 	};
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.checkAnalyzer', () => checkAnalyzer(true)));
+
+	selectedModelId = context.workspaceState.get<string>('terramind.modelId');
+	context.subscriptions.push(vscode.commands.registerCommand('terramind.selectModel', async () => {
+		const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
+		let payload: { active_id?: string | null; models?: Array<{ id: string; name: string; size_mb?: number | null; active?: boolean }> } | undefined;
+		try {
+			const response = await fetch(`${analyzerUrl}/v1/models`);
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			payload = await response.json() as typeof payload;
+		} catch (error) {
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind: could not list models ({0}). Is the analyzer running?', String(error)));
+			return;
+		}
+		const models = payload?.models ?? [];
+		if (!models.length) {
+			await vscode.window.showWarningMessage(vscode.l10n.t('TerraMind: no GGUF models found. Put a .gguf in the analyzer models directory.'));
+			return;
+		}
+		const picked = await vscode.window.showQuickPick<vscode.QuickPickItem & { id: string }>(
+			models.map((entry) => ({
+				label: (selectedModelId === entry.id ? '$(check) ' : '') + entry.name,
+				description: entry.size_mb ? `${entry.size_mb} MB` : '',
+				detail: entry.id,
+				id: entry.id
+			})),
+			{
+				title: vscode.l10n.t('TerraMind: select the local generation model'),
+				placeHolder: vscode.l10n.t('Small model = fast/CPU-friendly; larger model = higher quality (needs a GPU)')
+			}
+		);
+		if (!picked) {
+			return;
+		}
+		selectedModelId = picked.id;
+		await context.workspaceState.update('terramind.modelId', selectedModelId);
+		await vscode.window.showInformationMessage(vscode.l10n.t('TerraMind: generation will use {0}.', picked.id));
+	}));
 	void checkAnalyzer(false);
 
 	// Analyze a local fixture folder server-side. Unlike Analyze Workspace this needs
@@ -704,6 +746,7 @@ async function requestGenerationJob(
 					connectivity,
 					constraints,
 					model,
+					model_id: selectedModelId,
 					engine,
 					workspace_path: workspacePath,
 					run_external_tools: runExternalTools,

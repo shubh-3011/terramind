@@ -69,6 +69,11 @@
 				"category": "TerraMind"
 			},
 			{
+				"command": "terramind.selectModel",
+				"title": "%command.selectModel%",
+				"category": "TerraMind"
+			},
+			{
 				"command": "terramind.analyzeDemo",
 				"title": "%command.analyzeDemo%",
 				"category": "TerraMind"
