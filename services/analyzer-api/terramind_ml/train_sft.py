@@ -342,6 +342,17 @@ def main() -> int:
     if not torch.cuda.is_available():
         parser.error("CUDA is required for this script; install the isolated CUDA-enabled training environment first")
     args.output.mkdir(parents=True, exist_ok=True)
+
+    # Multi-GPU (DDP) support via torchrun. With WORLD_SIZE=1 this is a no-op.
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    distributed = world_size > 1
+    if distributed:
+        torch.distributed.init_process_group(backend="nccl")
+        torch.cuda.set_device(local_rank)
+    device_name = f"cuda:{local_rank}" if distributed else "cuda"
+    is_main = rank == 0
     tokenizer = AutoTokenizer.from_pretrained(base["model"], revision=base["revision"], trust_remote_code=False)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -380,7 +391,10 @@ def main() -> int:
             base["model"], revision=base["revision"], dtype=dtype, trust_remote_code=False,
         )
     model.config.use_cache = False
-    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    # Gradient checkpointing saves memory at ~25-30% throughput cost. On a big GPU
+    # (e.g. an H200) it can be turned off with TERRAMIND_GRAD_CHECKPOINTING=0 for speed.
+    if os.environ.get("TERRAMIND_GRAD_CHECKPOINTING", "1") == "1":
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     if args.load_in_4bit:
         # Casts layer norms to fp32 and enables the input grads 4-bit PEFT training needs.
         model = prepare_model_for_kbit_training(model)
@@ -396,9 +410,14 @@ def main() -> int:
     # A 4-bit model is already placed by bitsandbytes via device_map and must not be
     # moved with ``.to("cuda")`` (unsupported for quantized weights).
     if not args.load_in_4bit:
-        model = model.to("cuda")
+        model = model.to(device_name)
     model.print_trainable_parameters()
     print(f"Training device: {next(model.parameters()).device}")
+    if distributed:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True,
+        )
+    unwrap = model.module if distributed else model
 
     def collate(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
         import numpy as np
@@ -428,8 +447,9 @@ def main() -> int:
     if not trainable_params:
         parser.error("No trainable parameters found; check the LoRA target modules")
     optimizer = torch.optim.AdamW(trainable_params, lr=args.learning_rate, weight_decay=0.01)
+    per_rank_examples = math.ceil(len(train_rows) / world_size)
     batches_per_epoch = max(
-        1, math.ceil(len(train_rows) / (args.per_device_batch_size * args.gradient_accumulation_steps))
+        1, math.ceil(per_rank_examples / (args.per_device_batch_size * args.gradient_accumulation_steps))
     )
     total_steps = max(1, batches_per_epoch * max(1, int(math.ceil(args.epochs))))
     scheduler = get_cosine_schedule_with_warmup(
@@ -437,7 +457,7 @@ def main() -> int:
     )
 
     def to_device(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        return {key: value.to("cuda") for key, value in batch.items()}
+        return {key: value.to(device_name) for key, value in batch.items()}
 
     def evaluate() -> float:
         model.eval()
@@ -460,6 +480,8 @@ def main() -> int:
     for epoch in range(max(1, int(math.ceil(args.epochs)))):
         order = list(range(len(train_rows)))
         random.Random(args.seed + epoch).shuffle(order)
+        if distributed:
+            order = order[rank::world_size]
         optimizer.zero_grad(set_to_none=True)
         window = list(range(0, len(order), args.per_device_batch_size))
         for batch_number, start in enumerate(window, start=1):
@@ -478,6 +500,13 @@ def main() -> int:
                 forward_time = time.time() - phase
                 phase = time.time()
             raw_loss = float(outputs.loss.item())
+            if not math.isfinite(raw_loss):
+                # A single toxic batch (e.g. an overflowing long sequence in bf16) must not
+                # poison the whole run: drop its gradients and continue.
+                if rank == 0:
+                    print(f"[skip] non-finite loss ({raw_loss}) at batch {batch_number}", flush=True)
+                optimizer.zero_grad(set_to_none=True)
+                continue
             (outputs.loss / args.gradient_accumulation_steps).backward()
             if debug:
                 torch.cuda.synchronize()
@@ -493,12 +522,13 @@ def main() -> int:
             recent_sum += raw_loss
             recent_count += 1
             if batch_number % args.gradient_accumulation_steps == 0 or batch_number == len(window):
-                torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
-                optimizer.step()
-                scheduler.step()
+                grad_norm = float(torch.nn.utils.clip_grad_norm_(trainable_params, 1.0))
+                if math.isfinite(grad_norm):
+                    optimizer.step()
+                    scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
                 global_step += 1
-                if global_step % 10 == 0:
+                if is_main and global_step % 10 == 0:
                     elapsed = time.time() - started
                     print(
                         f"step {global_step}/{total_steps} loss {recent_sum / max(1, recent_count):.4f} "
@@ -508,9 +538,10 @@ def main() -> int:
                     recent_sum = 0.0
                     recent_count = 0
         eval_loss = evaluate()
-        print(f"epoch {epoch + 1} eval_loss {eval_loss:.4f}", flush=True)
-        if args.save_strategy != "no":
-            model.save_pretrained(args.output / f"checkpoint-{global_step}", safe_serialization=True)
+        if is_main:
+            print(f"epoch {epoch + 1} eval_loss {eval_loss:.4f}", flush=True)
+        if args.save_strategy != "no" and is_main:
+            unwrap.save_pretrained(args.output / f"checkpoint-{global_step}", safe_serialization=True)
 
     train_metrics = {
         "train_loss": (loss_sum / loss_count) if loss_count else None,
@@ -519,8 +550,9 @@ def main() -> int:
         "examples_per_second": round(loss_count / max(1e-9, time.time() - started), 3),
     }
     evaluation = {"eval_loss": eval_loss}
-    model.save_pretrained(args.output, safe_serialization=True)
-    tokenizer.save_pretrained(args.output)
+    if is_main:
+        unwrap.save_pretrained(args.output, safe_serialization=True)
+        tokenizer.save_pretrained(args.output)
     limitations = [
         "Training/validation loss does not measure Terraform validity; low loss does not imply parseable, "
         "provider-valid, safe, cost-optimized, reliable, or deployable Terraform.",
@@ -569,8 +601,12 @@ def main() -> int:
         metadata["bnb_4bit_quant_type"] = args.bnb_4bit_quant_type
         metadata["bnb_4bit_compute_dtype"] = args.bnb_4bit_compute_dtype
         metadata["bnb_4bit_use_double_quant"] = bool(args.bnb_4bit_double_quant)
-    (args.output / "training-metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(metadata, indent=2))
+    if is_main:
+        (args.output / "training-metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(metadata, indent=2))
+    if distributed:
+        torch.distributed.barrier()
+        torch.distributed.destroy_process_group()
     return 0
 
 
