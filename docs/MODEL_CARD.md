@@ -2,6 +2,12 @@
 
 > **Status (2026-10-03):** the shipped model is **v2** (LoRA of `Qwen/Qwen2.5-Coder-1.5B-Instruct`, 940 MB `Q4_K_M`). On 12 held-out examples it parses **~83 %** and passes `terraform validate` **~33 %** — a review-required draft assistant. A larger **v3** retrain (8k generated + 12k security-filtered examples) was evaluated and **rejected** (67 % / 33 %). The model is distributed as a release asset and downloaded on first run. Next lever: DGX distillation ([DISTILLATION.md](DISTILLATION.md)).
 
+> **Update (2026-10-10): an optional 7 B quality model now exists.** A QLoRA (4-bit) fine-tune of `Qwen/Qwen2.5-Coder-7B-Instruct` on a **multi-task** corpus (12 k scaffolder + filtered multi-cloud generation examples plus ~15 k `galcan/terraform_sec` security-review examples) that does **two jobs**:
+> - **generate** — valid, idiomatic HCL across AWS/Azure/GCP (6/6 held-out prompts parsed; e.g. a 13-resource VPC);
+> - **review** — `SECURE`/`INSECURE` findings in the trained contract (`Issue / Severity / Rule (AVD-*) / File / Resolution`).
+>
+> Exported to **Q4_K_M (~4.4 GB)**; runs on an 8 GB GPU (~35–43 tok/s here). Selected with `TERRAMIND_GGUF_MODEL=<path>.gguf`; the **1.5 B stays the default**. Review prioritisation is imperfect (it can flag a cosmetic tfsec finding and miss a critical one), so the deterministic rules remain the security authority.
+
 This is the model card for the optional, locally hosted **Terraform generation** model that
 ships with TerraMind. It is a small instruction-tuned code model, exported to GGUF and run
 on the user's own machine through llama.cpp. It drafts Terraform HCL for review; it does not

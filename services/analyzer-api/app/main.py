@@ -556,7 +556,13 @@ def _discover_gguf_model() -> str | None:
             if directory.is_dir():
                 candidates = sorted(directory.glob("*.gguf"))
                 if candidates:
-                    return str(candidates[0])
+                    # Prefer the lightweight bundled default when several models are
+                    # present; otherwise fall back to the smallest file. An explicit
+                    # TERRAMIND_GGUF_MODEL always overrides this.
+                    preferred = [c for c in candidates if "1.5b" in c.name.lower()]
+                    if preferred:
+                        return str(preferred[0])
+                    return str(min(candidates, key=lambda path: path.stat().st_size))
         except OSError:
             continue
     return None

@@ -61,6 +61,15 @@ structured requests. Never apply AI output without `terraform validate` / `terra
 Next quality lever: **distillation** — fine-tune a larger teacher on a DGX and distil its
 validated output into the small model ([docs/DISTILLATION.md](docs/DISTILLATION.md)).
 
+**New (2026-10-10): a 7 B multi-task model.** `Qwen/Qwen2.5-Coder-7B-Instruct` was fine-tuned
+(QLoRA, 4-bit) to **both generate and review** Terraform — generation produces valid multi-cloud
+HCL; review emits structured `SECURE`/`INSECURE` findings with real `AVD-*` (tfsec) rule IDs. It
+is exported to **Q4_K_M (~4.4 GB)** and runs on an 8 GB GPU. It ships as an optional **quality**
+model: place the `.gguf` in `services/analyzer-api/models/` and select it with
+`TERRAMIND_GGUF_MODEL=<path>`. The **1.5 B remains the default** (small, CPU-friendly), and the
+deterministic 66-rule analyzer stays the security authority — the model's review output is
+explanation, not a guarantee.
+
 ---
 
 ## What it does
