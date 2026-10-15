@@ -234,7 +234,7 @@ def test_generate_returns_parseable_hcl_without_writing_files(tmp_path):
     assert response.status_code == 200
     assert response.json()["syntax_valid"] is True
     assert response.json()["model"] == "qwen2.5-coder:3b"
-    assert "does not verify" in response.json()["validation_scope"]
+    assert "are not verified" in response.json()["validation_scope"]
     assert list(tmp_path.iterdir()) == []
 
 
@@ -816,4 +816,66 @@ def test_generate_job_registry_is_bounded():
     assert len(_GENERATION_JOBS) <= MAX_GENERATION_JOBS
     # The oldest entries were evicted.
     assert "unit-test-job-0" not in _GENERATION_JOBS
+
+
+# --- deterministic cost estimation ------------------------------------------
+
+
+def test_analyze_includes_a_region_aware_cost_estimate(tmp_path):
+    (tmp_path / "main.tf").write_text(
+        '''provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_instance" "web" {
+  instance_type = "t3.micro"
+}
+
+resource "aws_db_instance" "db" {
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+}
+
+resource "aws_s3_bucket" "data" {
+  bucket = "example"
+}
+''',
+        encoding="utf-8",
+    )
+
+    response = client.post("/v1/analyze", json={"workspace_path": str(tmp_path)})
+
+    assert response.status_code == 200
+    cost = response.json()["cost_estimate"]
+    assert cost is not None
+    assert cost["currency"] == "USD"
+    assert cost["region"] == "us-east-1"
+    assert cost["total_monthly_usd"] > 0
+    types = {item["resource_type"] for item in cost["line_items"]}
+    assert "aws_instance" in types
+    assert "aws_db_instance" in types
+    assert cost["disclaimer"]
+    assert response.json()["checks"]["cost_estimate"].startswith("static list prices")
+
+
+def test_analyze_without_resources_estimates_zero_cost(tmp_path):
+    (tmp_path / "main.tf").write_text('terraform { required_version = ">= 1.5" }', encoding="utf-8")
+
+    response = client.post("/v1/analyze", json={"workspace_path": str(tmp_path)})
+
+    assert response.status_code == 200
+    assert response.json()["cost_estimate"]["total_monthly_usd"] == 0.0
+
+
+def test_generate_response_also_carries_a_cost_estimate():
+    with patch(
+        "app.main._generate_with_ollama",
+        return_value=("test-model", 'resource "aws_instance" "web" { instance_type = "t3.micro" }'),
+    ):
+        response = client.post("/v1/generate", json={"description": "Create a web server"})
+
+    assert response.status_code == 200
+    cost = response.json()["cost_estimate"]
+    assert cost is not None
+    assert cost["total_monthly_usd"] > 0
 

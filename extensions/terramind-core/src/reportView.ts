@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import type { AnalysisFinding, AnalysisResult, RatingDimension, Recommendation, ServiceRating } from './extension';
+import type { AnalysisFinding, AnalysisResult, CostEstimate, RatingDimension, Recommendation, ServiceRating } from './extension';
 
 const REPORT_VIEW_TYPE = 'terramind.report';
 const SEVERITY_ORDER: readonly AnalysisFinding['severity'][] = ['error', 'warning', 'information'];
@@ -165,16 +165,68 @@ function getHtml(workspaceName: string, report: AnalysisResult | undefined): str
 	.finding-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
 	.finding-message { margin: 0 0 4px; }
 	.finding-recommendation { margin: 0; color: var(--vscode-descriptionForeground, #6a6a6a); }
+	.cost-total { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin: 0 0 10px; }
+	.cost-amount { font-size: 1.5em; font-weight: 700; font-variant-numeric: tabular-nums; }
+	.cost-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+	.cost-table th, .cost-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3)); vertical-align: top; }
+	.cost-table td.num, .cost-table th.num { text-align: right; }
+	.cost-note { color: var(--vscode-descriptionForeground, #6a6a6a); font-size: 0.9em; margin: 6px 0 0; }
+	.cost-assumption { color: var(--vscode-descriptionForeground, #6a6a6a); font-size: 0.88em; }
+	.confidence-low { color: var(--vscode-editorWarning-foreground, #d29922); }
 </style>
 </head>
 <body>
 	<h1>${escapeHtml(title)}</h1>
 	${renderHeader(workspaceName, report)}
+	${renderCost(report)}
 	${renderServiceScores(report)}
 	${renderRecommendations(report)}
 	${renderFindings(report)}
 </body>
 </html>`;
+}
+
+function formatUsd(value: number): string {
+	return `$${(Number.isFinite(value) ? value : 0).toFixed(2)}`;
+}
+
+function formatQuantity(value: number): string {
+	if (!Number.isFinite(value)) {
+		return '0';
+	}
+	return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function renderCost(report: AnalysisResult | undefined): string {
+	const cost: CostEstimate | null | undefined = report?.cost_estimate;
+	if (!cost) {
+		return '';
+	}
+	const items = cost.line_items.filter(item => item.monthly_usd > 0).slice(0, 20);
+	const rows = items.map(item => `<tr>
+		<td><span class="rule">${escapeHtml(item.resource_type)}</span>${item.assumption ? `<div class="cost-assumption">${escapeHtml(item.assumption)}</div>` : ''}</td>
+		<td>${escapeHtml(item.billing_basis)}</td>
+		<td class="num">${escapeHtml(formatQuantity(item.quantity))} ${escapeHtml(item.unit)}</td>
+		<td class="num">${escapeHtml(formatUsd(item.unit_price_usd))}</td>
+		<td class="num${item.confidence === 'low' ? ' confidence-low' : ''}">${escapeHtml(formatUsd(item.monthly_usd))}</td>
+	</tr>`).join('');
+	const table = items.length
+		? `<table class="cost-table"><thead><tr><th>${escapeHtml(vscode.l10n.t('Resource'))}</th><th>${escapeHtml(vscode.l10n.t('Billing basis'))}</th><th class="num">${escapeHtml(vscode.l10n.t('Quantity'))}</th><th class="num">${escapeHtml(vscode.l10n.t('Unit price'))}</th><th class="num">${escapeHtml(vscode.l10n.t('Monthly'))}</th></tr></thead><tbody>${rows}</tbody></table>`
+		: `<p class="empty">${escapeHtml(vscode.l10n.t('No directly billable resources were identified.'))}</p>`;
+	const unpriced = cost.unpriced.length
+		? `<p class="cost-note">${escapeHtml(vscode.l10n.t('{0} resource(s) are usage-based or unpriced and are excluded from the total:', cost.unpriced.length))}</p><ul class="detail-list">${cost.unpriced.slice(0, 12).map(entry => `<li><span class="rule">${escapeHtml(entry.resource_type)}</span> - ${escapeHtml(entry.reason)}</li>`).join('')}</ul>`
+		: '';
+	const notes = cost.notes.length
+		? `<p class="cost-note">${cost.notes.map(note => escapeHtml(note)).join(' ')}</p>`
+		: '';
+	return `<section class="section">
+		<h2>${escapeHtml(vscode.l10n.t('Estimated monthly cost'))} <span class="chip chip-experimental">${escapeHtml(vscode.l10n.t('estimate'))}</span></h2>
+		<p class="cost-total"><span class="cost-amount">${escapeHtml(formatUsd(cost.total_monthly_usd))}</span><span class="muted">/ ${escapeHtml(vscode.l10n.t('month'))} · ${escapeHtml(cost.region)} · ${escapeHtml(vscode.l10n.t('{0} h/month', cost.assumed_hours_per_month))}</span></p>
+		${table}
+		${unpriced}
+		${notes}
+		<p class="cost-note">${escapeHtml(cost.disclaimer)}</p>
+	</section>`;
 }
 
 function renderHeader(workspaceName: string, report: AnalysisResult | undefined): string {

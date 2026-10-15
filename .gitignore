@@ -103,3 +103,24 @@ PLAN.md
 PROGRESS.md
 ARCHITECTURE.md
 current-issue-progress.md
+
+# Ad-hoc local launch logs from Code-OSS dev runs
+/elog.txt
+/package-log.txt
+/web-log.txt
+/code-run.err
+/code-run.out
+/tmfinal.err
+/tmfinal.out
+/c.err
+/c.out
+/e.err
+/e.out
+
+# Code-OSS dev profile data (the risk-model manifest under data/manifests/ IS tracked)
+/data/argv.json
+/data/extensions/
+/data/shared-data/
+/data/user-data/
+/data/logs/
+/data/User/

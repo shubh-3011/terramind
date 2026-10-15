@@ -144,6 +144,7 @@ class GenerateResponse(BaseModel):
     findings: list[Finding]
     service_ratings: list[dict[str, Any]]
     recommendations: list[dict[str, Any]] = []
+    cost_estimate: dict[str, Any] | None = None
     checks: dict[str, str]
 
 
@@ -156,6 +157,7 @@ class AnalyzeResponse(BaseModel):
     recommendations: list[dict[str, Any]] = []
     risk_prediction: dict[str, Any] | None
     risk_prediction_reason: str | None
+    cost_estimate: dict[str, Any] | None = None
     checks: dict[str, str]
 
 
@@ -290,8 +292,10 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
             "checkov": f"not_run: {disabled_reason}",
         }
 
+    from app.pricing import estimate_cost
     from app.ratings import build_service_ratings
     service_ratings = build_service_ratings(parsed_documents, findings)
+    cost_estimate = estimate_cost(parsed_documents)
 
     return AnalyzeResponse(
         status="completed",
@@ -302,9 +306,11 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
         recommendations=build_recommendations(findings),
         risk_prediction=risk_prediction,
         risk_prediction_reason=risk_prediction_reason,
+        cost_estimate=cost_estimate,
         checks={
             "hcl_parse": "completed",
             **tool_checks,
+            "cost_estimate": f"static list prices (region {cost_estimate['region']})",
             "ml_risk": f"experimental: {risk_prediction['model_version']}" if risk_prediction else "not_available: " + str(risk_prediction_reason),
         },
     )
@@ -926,13 +932,16 @@ def _validated_generation_response(
             terraform, workspace_path,
         )
         findings.extend(terraform_findings)
+    from app.pricing import estimate_cost
     from app.ratings import build_service_ratings
 
     service_ratings = build_service_ratings([document], findings)
+    cost_estimate = estimate_cost([document])
     validation_scope = (
         "HCL syntax parsing and TerraMind static security heuristics only; "
         f"Terraform provider validation: {checks['terraform_validate']}. "
-        "This does not verify costs, runtime availability, scalability, or deployment behavior."
+        "Cost figures are static list-price estimates, and runtime availability, "
+        "scalability, and deployment behavior are not verified."
     )
     return GenerateResponse(
         status="completed",
@@ -943,6 +952,7 @@ def _validated_generation_response(
         findings=findings,
         service_ratings=service_ratings,
         recommendations=build_recommendations(findings),
+        cost_estimate=cost_estimate,
         checks=checks,
     )
 

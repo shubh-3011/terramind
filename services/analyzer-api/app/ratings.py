@@ -101,8 +101,8 @@ def build_service_ratings(documents: list[dict[str, Any]], findings: list[Any]) 
                     "Not scored: no workload, traffic pattern, or capacity target is available in static HCL.",
                 ),
                 "cost": _unknown(
-                    "Cost requires region, usage, pricing date, and a provider pricing estimator.",
-                    "Not scored: no usage profile, region, or dated pricing data is available.",
+                    "No calibrated cost score. A region-aware static list-price estimate is reported separately as 'cost_estimate'.",
+                    "Not scored: usage profile and discounts are unavailable, so no reliability-calibrated cost score is produced.",
                 ),
                 "maintainability": maintainability,
             },
@@ -550,6 +550,16 @@ def _service_for_resource(resource_type: str) -> str:
         return "other"
 
     return "other"
+
+
+def iter_resources(documents: list[dict[str, Any]]):
+    """Public wrapper around :func:`_iter_resources` for sibling modules (pricing)."""
+    return _iter_resources(documents)
+
+
+def service_for_resource(resource_type: str) -> str:
+    """Public wrapper around :func:`_service_for_resource` for sibling modules (pricing)."""
+    return _service_for_resource(resource_type)
 
 
 def _literal_vs_reference_counts(attributes: dict[str, Any]) -> tuple[int, int]:

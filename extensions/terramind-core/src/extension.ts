@@ -20,6 +20,7 @@ export interface AnalysisResult {
 	readonly checks: Readonly<Record<string, string>>;
 	readonly service_ratings: readonly ServiceRating[];
 	readonly recommendations?: readonly Recommendation[];
+	readonly cost_estimate?: CostEstimate | null;
 }
 
 export interface RatingDimension {
@@ -58,7 +59,39 @@ interface GenerationResult {
 	readonly findings?: readonly AnalysisFinding[];
 	readonly service_ratings?: readonly ServiceRating[];
 	readonly recommendations?: readonly Recommendation[];
+	readonly cost_estimate?: CostEstimate | null;
 	readonly checks?: Readonly<Record<string, string>>;
+}
+
+export interface CostLineItem {
+	readonly resource_type: string;
+	readonly label: string;
+	readonly service: string;
+	readonly billing_basis: string;
+	readonly quantity: number;
+	readonly unit: string;
+	readonly unit_price_usd: number;
+	readonly monthly_usd: number;
+	readonly confidence: 'high' | 'medium' | 'low';
+	readonly assumption?: string | null;
+}
+
+export interface UnpricedResource {
+	readonly resource_type: string;
+	readonly label: string;
+	readonly reason: string;
+}
+
+export interface CostEstimate {
+	readonly currency: string;
+	readonly period: string;
+	readonly region: string;
+	readonly assumed_hours_per_month: number;
+	readonly total_monthly_usd: number;
+	readonly line_items: readonly CostLineItem[];
+	readonly unpriced: readonly UnpricedResource[];
+	readonly notes: readonly string[];
+	readonly disclaimer: string;
 }
 
 export interface AnalysisFinding {
@@ -345,6 +378,9 @@ export function activate(context: vscode.ExtensionContext): void {
 				const errors = result.findings.filter(finding => finding.severity === 'error').length;
 				const warnings = result.findings.filter(finding => finding.severity === 'warning').length;
 				output.appendLine(`Analysis status=${result.status}; parsed=${result.parsed_file_count}/${result.terraform_file_count}; errors=${errors}; warnings=${warnings}`);
+				if (result.cost_estimate) {
+					output.appendLine(`COST estimated=${result.cost_estimate.total_monthly_usd.toFixed(2)} ${result.cost_estimate.currency}/${result.cost_estimate.period}; region=${result.cost_estimate.region}; priced=${result.cost_estimate.line_items.length}; unpriced=${result.cost_estimate.unpriced.length}`);
+				}
 				for (const [check, status] of Object.entries(result.checks ?? {})) {
 					output.appendLine(`CHECK ${check}: ${status}`);
 				}
