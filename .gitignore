@@ -104,6 +104,10 @@ PROGRESS.md
 ARCHITECTURE.md
 current-issue-progress.md
 
+# Release build staging and the packaged ZIP (published as GitHub release assets)
+/build/
+/TerraMind-*.zip
+
 # Ad-hoc local launch logs from Code-OSS dev runs
 /elog.txt
 /package-log.txt
