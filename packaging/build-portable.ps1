@@ -213,6 +213,7 @@ Write-Step "Adding launcher, readme and analyzer starter"
 Copy-Item (Join-Path $PackagingDir "TerraMind.bat")           $OutputDir -Force
 Copy-Item (Join-Path $PackagingDir "readme-first.txt")        (Join-Path $OutputDir "README-FIRST.txt") -Force
 Copy-Item (Join-Path $PackagingDir "analyzer\run-analyzer.bat") $BundleAnalyzer -Force
+Copy-Item (Join-Path $PackagingDir "enable-gpu.bat")          $OutputDir -Force
 
 # ---------------------------------------------------------------------------
 # 7. Report the result, then optionally zip it for release.
@@ -227,8 +228,13 @@ if ($Zip) {
     Write-Step "Compressing release ZIP"
     $zipPath = "$OutputDir.zip"
     if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
-    # Compress-Archive is fine up to 2 GB; the app+analyzer bundle stays well below.
-    Compress-Archive -Path (Join-Path $OutputDir "*") -DestinationPath $zipPath -CompressionLevel Optimal
+    # Use tar.exe (libarchive), NOT Compress-Archive: the bundled copilot extension
+    # contains paths longer than MAX_PATH, which the PowerShell 5.1 zip helper
+    # rejects with ZipArchiveUnauthorizedAccessError. tar handles them fine.
+    $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+    if (-not (Test-Path $tar)) { $tar = "tar.exe" }
+    & $tar -a -c -f $zipPath -C (Split-Path $OutputDir -Parent) (Split-Path $OutputDir -Leaf)
+    if ($LASTEXITCODE -ne 0) { throw "tar.exe failed to create $zipPath (exit $LASTEXITCODE)" }
     Write-Host ("  ZIP    : {0} ({1:N1} MB)" -f $zipPath, ((Get-Item $zipPath).Length / 1MB))
 }
 
