@@ -44,6 +44,8 @@ _ALIASES: list[tuple[str, str]] = [
     ("nat_gateway", r"(?:nat\s+gateways?|\bnat\b)"),
     ("route_table", r"(?:route\s+tables?|routing\s+tables?)"),
     ("security_group", r"(?:security\s+groups?|\bsg\b)"),
+    ("rds", r"(?:rds\s+(?:instances?|databases?|clusters?|serverless)|relational\s+databases?|managed\s+databases?|\bpostgres(?:ql)?\b|\bmysql\b|\bmariadb\b|\baurora\b|\bdatabase\s+instances?)"),
+    ("eks", r"(?:eks\s+clusters?|\bkubernetes\s+clusters?|\bk8s\s+clusters?|\bmanaged\s+kubernetes)"),
     ("flow_log", r"(?:vpc\s+flow\s+logs?|flow\s+logs?)"),
     ("cloudwatch_log_group", r"(?:cloudwatch\s+log\s+groups?|\blog\s+groups?)"),
     ("instance_profile", r"(?:iam\s+instance\s+profiles?|instance\s+profiles?)"),
@@ -70,6 +72,8 @@ _NETWORK_KINDS = frozenset(
         "alb",
         "transit_gateway",
         "flow_log",
+        "rds",
+        "eks",
     }
 )
 
@@ -108,6 +112,7 @@ class _Subnet:
     vpc: int
     kind: str  # "public" | "private"
     cidr: str = ""
+    az: str = ""
 
 
 @dataclass
@@ -154,7 +159,7 @@ def scaffold_terraform(
 
     request = _Request(counts=resolved)
     notes: list[str] = []
-    body = _generate_resources(request, combined, notes)
+    body = _generate_resources(request, combined, notes, region)
     # The provider block always references var.aws_region, so include it even
     # though only the resource body is scanned here.
     referenced = set(_VAR_REFERENCE.findall(body)) | {"aws_region"}
@@ -282,7 +287,7 @@ def _render_variables(referenced: set[str], region: str) -> str:
 # --- Resource generation ----------------------------------------------------
 
 
-def _generate_resources(request: _Request, combined: str, notes: list[str]) -> str:
+def _generate_resources(request: _Request, combined: str, notes: list[str], region: str) -> str:
     """Generate every resource block and append human-readable notes."""
     vpc_count = request.get("vpc")
     public = request.get("public_subnet")
@@ -300,11 +305,19 @@ def _generate_resources(request: _Request, combined: str, notes: list[str]) -> s
     profile_requested = request.get("instance_profile")
     cw_requested = request.get("cloudwatch_log_group")
     flow_log = request.get("flow_log")
+    rds = request.get("rds")
+    eks = request.get("eks")
 
     network = any(request.get(kind) for kind in _NETWORK_KINDS)
     if network and vpc_count == 0:
         vpc_count = 1
         notes.append("No VPC count was supplied, so one VPC was generated as the network boundary.")
+
+    if (rds or eks) and private < 2 * vpc_count:
+        private = 2 * vpc_count
+        notes.append(
+            "Added private subnets so the managed database / Kubernetes cluster has two subnet availability zones."
+        )
 
     if generic:
         if public == 0:
@@ -323,6 +336,14 @@ def _generate_resources(request: _Request, combined: str, notes: list[str]) -> s
         notes.append("Added a public subnet because a NAT gateway / load balancer requires one.")
 
     subnets = _build_subnets(public, private, vpc_count, tgw, notes)
+
+    # Assign each subnet an availability zone, spreading subnets of the same VPC
+    # across AZ letters so multi-AZ resources (RDS, EKS) get two distinct zones.
+    az_offsets: dict[int, int] = {}
+    for subnet in subnets:
+        offset = az_offsets.get(subnet.vpc, 0)
+        subnet.az = f"{region}{'abcd'[offset % 4]}"
+        az_offsets[subnet.vpc] = offset + 1
 
     # Internet gateways: one per VPC that has public subnets, plus any explicit
     # request. Cannot exceed the number of VPCs (an IGW attaches to one VPC).
@@ -346,9 +367,9 @@ def _generate_resources(request: _Request, combined: str, notes: list[str]) -> s
     public_rt = {vpc: f"public_rt_{vpc}" for vpc in vpcs_with_public if vpc in igw_label}
     private_rt = {vpc: f"private_rt_{vpc}" for vpc in vpcs_with_private}
 
-    if ec2 and sg_requested == 0:
+    if (ec2 or rds or eks) and sg_requested == 0:
         sg_requested = 1
-        notes.append("Added one security group with VPC-scoped ingress so instances do not rely on the default group.")
+        notes.append("Added one security group with VPC-scoped ingress so resources do not rely on the default group.")
     security_groups = [
         (f"sg_{index}", (index - 1) % vpc_count + 1) for index in range(1, sg_requested + 1)
     ]
@@ -379,7 +400,8 @@ def _generate_resources(request: _Request, combined: str, notes: list[str]) -> s
             body = (
                 f"  vpc_id                  = aws_vpc.vpc_{subnet.vpc}.id\n"
                 f'  cidr_block              = "{subnet.cidr}"\n'
-                f"  map_public_ip_on_launch = {public_ip}\n\n"
+                f"  map_public_ip_on_launch = {public_ip}\n"
+                f'  availability_zone       = "{subnet.az}"\n\n'
                 + _tags("subnet", subnet.label)
             )
             blocks.append(_resource("aws_subnet", subnet.label, body))
@@ -726,6 +748,132 @@ def _generate_resources(request: _Request, combined: str, notes: list[str]) -> s
             )
             blocks.append(_resource("aws_flow_log", f"flow_log_{index}", body))
 
+    if rds:
+        blocks.append("# --- RDS (private, encrypted, no plaintext master password) ---")
+        vpc = _pick_vpc_with_private(subnets, vpc_count)
+        db_subnets = [subnet for subnet in subnets if subnet.vpc == vpc and subnet.kind == "private"][:2]
+        db_subnet_refs = ", ".join(f"aws_subnet.{subnet.label}.id" for subnet in db_subnets)
+        sg_labels = [label for label, sg_vpc in security_groups if sg_vpc == vpc]
+        for index in range(1, rds + 1):
+            group_body = (
+                f'  name       = "${{var.project}}-db-subnets-{index}"\n'
+                f"  subnet_ids = [{db_subnet_refs}]\n\n"
+                + _tags("db-subnets", str(index))
+            )
+            blocks.append(_resource("aws_db_subnet_group", f"db_subnets_{index}", group_body))
+            sg_line = (
+                f"  vpc_security_group_ids      = [{', '.join('aws_security_group.' + label + '.id' for label in sg_labels)}]\n"
+                if sg_labels
+                else ""
+            )
+            instance_body = (
+                f'  identifier                  = "${{var.project}}-db-{index}"\n'
+                '  engine                      = "postgres"\n'
+                '  engine_version              = "16"\n'
+                '  instance_class              = "db.t3.micro"\n'
+                "  allocated_storage           = 20\n"
+                "  storage_encrypted           = true\n"
+                "  manage_master_user_password = true\n"
+                '  username                    = "terramind"\n'
+                f"  db_subnet_group_name        = aws_db_subnet_group.db_subnets_{index}.name\n"
+                "  publicly_accessible         = false\n"
+                "  multi_az                    = true\n"
+                "  backup_retention_period     = 7\n"
+                "  deletion_protection         = true\n"
+                "  skip_final_snapshot         = false\n"
+                f'  final_snapshot_identifier   = "${{var.project}}-db-{index}-final"\n'
+                + sg_line
+                + "\n"
+                + _tags("db", str(index))
+            )
+            blocks.append(_resource("aws_db_instance", f"db_{index}", instance_body))
+        notes.append("RDS uses manage_master_user_password, so no database password is written into the HCL.")
+
+    if eks:
+        blocks.append("# --- EKS (private node subnets in two AZs, IRSA-ready) ---")
+        vpc = _pick_vpc_with_private(subnets, vpc_count)
+        node_subnets = [subnet for subnet in subnets if subnet.vpc == vpc and subnet.kind == "private"][:2]
+        node_subnet_refs = ", ".join(f"aws_subnet.{subnet.label}.id" for subnet in node_subnets)
+        cluster_role_body = (
+            f'  name = "${{var.project}}-eks-cluster-role"\n\n'
+            "  assume_role_policy = jsonencode({\n"
+            '    Version = "2012-10-17"\n'
+            "    Statement = [\n"
+            "      {\n"
+            '        Effect    = "Allow"\n'
+            '        Principal = { Service = "eks.amazonaws.com" }\n'
+            '        Action    = "sts:AssumeRole"\n'
+            "      }\n"
+            "    ]\n"
+            "  })\n\n"
+            + _tags("eks-cluster-role", "eks")
+        )
+        blocks.append(_resource("aws_iam_role", "eks_cluster_role", cluster_role_body))
+        blocks.append(_resource(
+            "aws_iam_role_policy_attachment", "eks_cluster_policy",
+            "  role       = aws_iam_role.eks_cluster_role.name\n"
+            '  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"\n',
+        ))
+        node_role_body = (
+            f'  name = "${{var.project}}-eks-node-role"\n\n'
+            "  assume_role_policy = jsonencode({\n"
+            '    Version = "2012-10-17"\n'
+            "    Statement = [\n"
+            "      {\n"
+            '        Effect    = "Allow"\n'
+            '        Principal = { Service = "ec2.amazonaws.com" }\n'
+            '        Action    = "sts:AssumeRole"\n'
+            "      }\n"
+            "    ]\n"
+            "  })\n\n"
+            + _tags("eks-node-role", "nodes")
+        )
+        blocks.append(_resource("aws_iam_role", "eks_node_role", node_role_body))
+        for policy_label, policy_arn in (
+            ("worker", "AmazonEKSWorkerNodePolicy"),
+            ("cni", "AmazonEKS_CNI_Policy"),
+            ("ecr", "AmazonEC2ContainerRegistryReadOnly"),
+        ):
+            blocks.append(_resource(
+                "aws_iam_role_policy_attachment", f"eks_node_{policy_label}",
+                "  role       = aws_iam_role.eks_node_role.name\n"
+                f'  policy_arn = "arn:aws:iam::aws:policy/{policy_arn}"\n',
+            ))
+        cluster_body = (
+            f'  name     = "${{var.project}}-eks"\n'
+            "  role_arn = aws_iam_role.eks_cluster_role.arn\n\n"
+            "  vpc_config {\n"
+            f"    subnet_ids              = [{node_subnet_refs}]\n"
+            "    endpoint_private_access = true\n"
+            "    endpoint_public_access  = true\n"
+            "  }\n\n"
+            "  access_config {\n"
+            '    authentication_mode = "API_AND_CONFIG_MAP"\n'
+            "  }\n\n"
+            + _tags("eks", "cluster")
+        )
+        blocks.append(_resource("aws_eks_cluster", "eks", cluster_body))
+        node_group_body = (
+            "  cluster_name   = aws_eks_cluster.eks.name\n"
+            "  node_role_arn  = aws_iam_role.eks_node_role.arn\n"
+            f"  subnet_ids     = [{node_subnet_refs}]\n"
+            '  capacity_type  = "ON_DEMAND"\n'
+            '  instance_types = ["t3.medium"]\n\n'
+            "  scaling_config {\n"
+            "    desired_size = 2\n"
+            "    min_size     = 1\n"
+            "    max_size     = 3\n"
+            "  }\n\n"
+            "  depends_on = [\n"
+            "    aws_iam_role_policy_attachment.eks_node_worker,\n"
+            "    aws_iam_role_policy_attachment.eks_node_cni,\n"
+            "    aws_iam_role_policy_attachment.eks_node_ecr,\n"
+            "  ]\n\n"
+            + _tags("eks-node-group", "nodes")
+        )
+        blocks.append(_resource("aws_eks_node_group", "eks_nodes", node_group_body))
+        notes.append("EKS nodes are placed in private subnets across two availability zones.")
+
     return "\n".join(blocks)
 
 
@@ -767,6 +915,14 @@ def _pick_vpc_with_public(public_subnets: list[_Subnet], vpc_count: int) -> int:
     if public_subnets:
         return public_subnets[0].vpc
     return 1 if vpc_count else 1
+
+
+def _pick_vpc_with_private(subnets: list[_Subnet], vpc_count: int) -> int:
+    """Return a VPC that has at least two private subnets (fall back to the first)."""
+    for vpc in range(1, vpc_count + 1):
+        if sum(1 for subnet in subnets if subnet.vpc == vpc and subnet.kind == "private") >= 2:
+            return vpc
+    return 1
 
 
 def _assemble(region: str, variable_text: str, body: str) -> str:

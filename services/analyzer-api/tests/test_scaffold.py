@@ -140,6 +140,10 @@ def test_no_public_ssh_ingress_in_any_generated_security_group():
         "4 buckets",
         "2 ALB",
         "10 SG",
+        "1 RDS database",
+        "2 postgres databases",
+        "1 EKS cluster",
+        "1 kubernetes cluster",
     ],
 )
 def test_supported_alias_forms_produce_parsable_hcl(inventory):
@@ -224,3 +228,52 @@ def test_notes_describe_assumptions():
     _hcl, notes, _document = _scaffold("2 EC2 + 1 S3")
     assert notes
     assert any("VPC" in note for note in notes)
+
+
+def test_rds_is_private_encrypted_and_multi_az():
+    hcl, notes, document = _scaffold("1 VPC, 1 RDS postgres database")
+    instances = _resources(document, "aws_db_instance")
+    assert len(instances) == 1
+    for attributes in instances[0].values():
+        assert attributes["engine"] == "postgres"
+        assert attributes["storage_encrypted"] is True
+        assert attributes["publicly_accessible"] is False
+        assert attributes["multi_az"] is True
+        assert attributes["manage_master_user_password"] is True
+        assert attributes["deletion_protection"] is True
+    assert "aws_db_subnet_group" in _resource_types(document)
+    # The subnet group must span two availability zones for Multi-AZ to be valid.
+    zones = {
+        subnet.get("availability_zone")
+        for instances in _resources(document, "aws_subnet")
+        for subnet in instances.values()
+    }
+    assert len(zones) >= 2
+    assert any("password" in note for note in notes)
+
+
+def test_eks_cluster_has_roles_and_private_two_az_node_group():
+    hcl, notes, document = _scaffold("1 EKS cluster")
+    assert "aws_eks_cluster" in _resource_types(document)
+    assert "aws_eks_node_group" in _resource_types(document)
+    roles = _resources(document, "aws_iam_role")
+    assert len(roles) == 2
+    node_groups = _resources(document, "aws_eks_node_group")
+    for attributes in node_groups[0].values():
+        assert attributes["capacity_type"] == "ON_DEMAND"
+        assert attributes["subnet_ids"]
+    assert "AmazonEKSClusterPolicy" in hcl
+    assert "AmazonEKSWorkerNodePolicy" in hcl
+    assert any("availability zone" in note for note in notes)
+
+
+def test_eks_and_rds_add_a_second_private_subnet_when_missing():
+    _hcl, notes, document = _scaffold("1 VPC, 1 public subnet, 1 RDS database")
+    private = [
+        subnet
+        for instances in _resources(document, "aws_subnet")
+        for subnet in instances.values()
+        if subnet.get("map_public_ip_on_launch") is False
+    ]
+    assert len(private) >= 2
+    assert any("availability zones" in note for note in notes)
