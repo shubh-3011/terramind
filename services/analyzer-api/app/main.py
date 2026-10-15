@@ -235,7 +235,10 @@ def analyze_workspace(request: AnalyzeRequest) -> AnalyzeResponse:
                     source="hcl-parser",
                 ))
                 continue
-            source = file_path.read_text(encoding="utf-8")
+            # utf-8-sig transparently strips a leading UTF-8 BOM, which Windows
+            # editors (Notepad, some VS Code save settings) add by default and
+            # which would otherwise make the HCL parser fail on byte 0.
+            source = file_path.read_text(encoding="utf-8-sig")
         except (OSError, UnicodeError) as error:
             findings.append(_finding(
                 relative_path,

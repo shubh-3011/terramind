@@ -53,19 +53,23 @@ MVP scope** by milestone coverage.
 
 ### Honest model quality
 
-Through the shipped GGUF engine with an **offline provider cache**, on 12 held-out examples:
+Through the shipped GGUF engine with an **offline provider cache**, on 12 held-out examples
+(a mixed multi-cloud slice, then an AWS-only slice so `terraform validate` is meaningful):
 
-| Model | Parses as HCL | Passes `terraform validate` | Resource-type F1 |
+| Slice / model | Parses as HCL | Passes `terraform validate` | Resource-type F1 |
 | --- | --- | --- | --- |
-| Default **1.5 B** | 8/12 (67%) | 2/8 (25%) | 0.21 |
-| Opt-in **7 B** | 11/12 (92%) | — (see note) | 0.39 |
+| Mixed — default **1.5 B** | 8/12 (67%) | 2/8 (25%) | 0.21 |
+| Mixed — opt-in **7 B** | 11/12 (92%) | — (multi-cloud, see note) | 0.39 |
+| AWS-only — default **1.5 B** | 6/12 (50%) | 2/6 (33%) | 0.46 |
+| AWS-only — opt-in **7 B** | 9/12 (75%) | 1/9 (11%) | 0.67 |
 
-The 7 B fails provider validation on multi-cloud drafts because our offline cache only contains
-the **AWS** provider (`.build/generated-validation`), not because the HCL is wrong. On an
-AWS-only held-out slice the 1.5 B parses 6/12 with 2/6 passing `terraform validate`. The
-generative models are **review-required draft assistants**; the deterministic scaffolder is the
-reliable path for structured requests. Never apply AI output without
-`terraform validate` / `terraform plan`.
+Read this honestly: the **7 B is a clearly better drafter** — it parses more often and matches more
+of the reference resource types. But it is **not** a better *validator-conformant* generator: even
+on the AWS-only slice it passes `terraform validate` less often than the 1.5 B, because it emits
+richer, newer HCL that the cached provider (and the extra providers it pulls in) rejects more
+often. Multi-cloud drafts cannot be validated offline at all — our cache holds only
+`hashicorp/aws` — so they report `provider_validation: failed` for a missing plugin, not bad HCL.
+Parser and analyzer coverage are provider-agnostic and are the cross-cloud signal.
 
 Next quality lever: **distillation** — distil a larger teacher's validated output into the small
 model so the *default* improves too ([docs/DISTILLATION.md](docs/DISTILLATION.md)).

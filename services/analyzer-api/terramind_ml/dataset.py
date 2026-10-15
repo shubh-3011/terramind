@@ -42,7 +42,7 @@ def build_dataset(source_root: Path) -> list[dict[str, Any]]:
         documents: list[dict[str, Any]] = []
         sources: list[str] = []
         for terraform_file in terraform_files:
-            source = terraform_file.read_text(encoding="utf-8")
+            source = terraform_file.read_text(encoding="utf-8-sig")
             sources.append(source)
             documents.append(hcl2.loads(source))
 

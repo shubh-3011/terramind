@@ -867,6 +867,22 @@ def test_analyze_without_resources_estimates_zero_cost(tmp_path):
     assert response.json()["cost_estimate"]["total_monthly_usd"] == 0.0
 
 
+def test_analyze_accepts_a_utf8_bom_from_windows_editors(tmp_path):
+    # Notepad and several VS Code save settings prepend a UTF-8 BOM. It must not
+    # turn a perfectly good .tf file into a syntax error.
+    (tmp_path / "main.tf").write_bytes(
+        '\ufeffresource "aws_s3_bucket" "data" {\n  bucket = "example"\n}\n'.encode("utf-8")
+    )
+
+    response = client.post("/v1/analyze", json={"workspace_path": str(tmp_path)})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["parsed_file_count"] == 1
+    assert not any(finding["rule_id"] == "TM-HCL-001" for finding in body["findings"])
+    assert body["cost_estimate"] is not None
+
+
 def test_generate_response_also_carries_a_cost_estimate():
     with patch(
         "app.main._generate_with_ollama",
