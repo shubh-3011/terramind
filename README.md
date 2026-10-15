@@ -59,14 +59,21 @@ Through the shipped GGUF engine with an **offline provider cache**, on 12 held-o
 | Slice / model | Parses as HCL | Passes `terraform validate` | Resource-type F1 |
 | --- | --- | --- | --- |
 | Mixed — default **1.5 B** | 8/12 (67%) | 2/8 (25%) | 0.21 |
-| Mixed — opt-in **7 B** | 11/12 (92%) | — (multi-cloud, see note) | 0.39 |
+| Mixed — opt-in **7 B (v2)** | 10/12 (83%) | 2/10 (20%) | 0.40 |
 | AWS-only — default **1.5 B** | 6/12 (50%) | 2/6 (33%) | 0.46 |
-| AWS-only — opt-in **7 B** | 9/12 (75%) | 1/9 (11%) | 0.67 |
+| AWS-only — opt-in **7 B (v2)** | 11/12 (92%) | 1/11 (9%) | 0.77 |
+| **Combined — 1.5 B** | **14/24 (58%)** | **4/14 (29%)** | 0.33 |
+| **Combined — 7 B (v2)** | **21/24 (88%)** | 3/21 (14%) | **0.58** |
 
-Read this honestly: the **7 B is a clearly better drafter** — it parses more often and matches more
-of the reference resource types. But it is **not** a better *validator-conformant* generator: even
-on the AWS-only slice it passes `terraform validate` less often than the 1.5 B, because it emits
-richer, newer HCL that the cached provider (and the extra providers it pulls in) rejects more
+The **7 B (v2)** is the review-weighted retrain: review answers are canonicalised into
+strict `CRITICAL → HIGH → MEDIUM → LOW` order, CRITICAL/HIGH rows are oversampled, and a slice of
+no-finding rows is kept so the model does not hallucinate findings. It beat the previous 7 B on the
+combined slices (parse **21/24 vs 20/24**, mean F1 **0.58 vs 0.53**) and clearly on AWS-only
+(92% vs 75% parse), though on the mixed slice it parses one example fewer — a real but modest gain.
+
+Read this honestly: the **7 B is a clearly better drafter** than the 1.5 B — it parses far more
+often and matches many more of the reference resource types. But it is **not** a better
+*validator-conformant* generator: it emits richer, newer HCL that the cached provider rejects more
 often. Multi-cloud drafts cannot be validated offline at all — our cache holds only
 `hashicorp/aws` — so they report `provider_validation: failed` for a missing plugin, not bad HCL.
 Parser and analyzer coverage are provider-agnostic and are the cross-cloud signal.
@@ -91,6 +98,9 @@ model: place the `.gguf` in `services/analyzer-api/models/` and pick it with
 default** (small, CPU-friendly), and the deterministic 66-rule analyzer stays the security
 authority — the model's review output is explanation, not a guarantee. The portable bundle adds
 GPU acceleration in place with `enable-gpu.bat` (no separate download).
+**Updated (2026-10-15):** the 7 B was retrained as **v2** on a review-weighted,
+severity-canonicalised corpus to fix the prioritisation weakness — see the table above and the
+[model card](https://huggingface.co/shubh-3011/terramind-7b-terraform).
 
 ---
 
