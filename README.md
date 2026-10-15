@@ -35,40 +35,58 @@ in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 ---
 
-## Project status (2026-10-03)
+## Project status (2026-10-15)
 
 This is a **beta**, not a finished or production security product. Roughly **75% of the agreed
 MVP scope** by milestone coverage.
 
 | Area | State |
 | --- | --- |
-| Repository | **Public**; default branch `main` (kept in sync with `testing`) |
-| Desktop app (Windows x64) | **Works**; packaged and released as a portable beta |
+| Repository | **Public `main`** + private `terramind-dev` (`main` + `testing`, where work happens) |
+| Desktop app (Windows x64) | **Works**; packaged and released as a portable beta (`v0.1.0-beta.2`) |
 | Browser workbench | **Works** (`http://localhost:8080`) |
-| Analyzer API | **66 deterministic rules** (general + AWS + Azure + GCP), evidence-scored ratings, prioritized recommendations, opt-in `fmt`/`validate`/TFLint/Checkov |
-| Deterministic scaffolder | **Works** — inventory → valid, secure Terraform in ~0.1 s, no model |
-| Local AI model | Fine-tuned `Qwen2.5-Coder-1.5B` (Apache-2.0), **940 MB Q4_K_M GGUF**, auto-discovered, downloaded on first run |
-| Tests | **171 passing** (`services/analyzer-api`, `pytest`); extension TypeScript check clean |
+| Analyzer API | **66 deterministic rules** (general + AWS + Azure + GCP), evidence-scored ratings, prioritized recommendations, **monthly cost estimate**, opt-in `fmt`/`validate`/TFLint/Checkov |
+| Deterministic scaffolder | **Works** — inventory → valid, secure Terraform in ~0.1 s, no model (VPC/subnet/IGW/NAT/routes/SG/EC2/S3/ALB/TGW/IAM-SSM/flow logs **+ RDS + EKS**) |
+| Local AI models | Default `Qwen2.5-Coder-1.5B` (**940 MB Q4_K_M**, CPU-friendly) + opt-in `Qwen2.5-Coder-7B` multi-task (**~4.4 GB Q4_K_M**), both auto-discovered and downloaded on first run |
+| Tests | **195 passing** (`services/analyzer-api`, `pytest`); extension TypeScript check clean |
 | CI | GitHub Actions **disabled**; the inherited VS Code workflows and Dependabot were removed |
 
 ### Honest model quality
-On **12 held-out examples** through the shipped GGUF engine: **~83% parse, ~33% pass
-`terraform validate`**. A larger retrain (v3: 8k generated + 12k security-filtered examples) did
-**not** improve on it (67% / 33%), so **v2 remains the bundled model**. The generative model is a
-**review-required draft assistant**; the deterministic scaffolder is the reliable path for
-structured requests. Never apply AI output without `terraform validate` / `terraform plan`.
 
-Next quality lever: **distillation** — fine-tune a larger teacher on a DGX and distil its
-validated output into the small model ([docs/DISTILLATION.md](docs/DISTILLATION.md)).
+Through the shipped GGUF engine with an **offline provider cache**, on 12 held-out examples:
+
+| Model | Parses as HCL | Passes `terraform validate` | Resource-type F1 |
+| --- | --- | --- | --- |
+| Default **1.5 B** | 8/12 (67%) | 2/8 (25%) | 0.21 |
+| Opt-in **7 B** | 11/12 (92%) | — (see note) | 0.39 |
+
+The 7 B fails provider validation on multi-cloud drafts because our offline cache only contains
+the **AWS** provider (`.build/generated-validation`), not because the HCL is wrong. On an
+AWS-only held-out slice the 1.5 B parses 6/12 with 2/6 passing `terraform validate`. The
+generative models are **review-required draft assistants**; the deterministic scaffolder is the
+reliable path for structured requests. Never apply AI output without
+`terraform validate` / `terraform plan`.
+
+Next quality lever: **distillation** — distil a larger teacher's validated output into the small
+model so the *default* improves too ([docs/DISTILLATION.md](docs/DISTILLATION.md)).
+
+**New (2026-10-15): monthly cost estimate + RDS/EKS scaffolding.**
+`app/pricing.py` produces a static, region-aware monthly list-price estimate (AWS/Azure/GCP) with
+billing basis, unit price and confidence per line, plus an explicit **unpriced** bucket for
+usage-based resources — an estimate, not a quote, and it never calls a cloud API. It appears in
+the report panel and the output channel. The deterministic scaffolder now also emits **RDS**
+(private, encrypted, Multi-AZ, `manage_master_user_password` so no password is written) and
+**EKS** (cluster + node roles, managed node group across two AZs).
 
 **New (2026-10-10): a 7 B multi-task model.** `Qwen/Qwen2.5-Coder-7B-Instruct` was fine-tuned
 (QLoRA, 4-bit) to **both generate and review** Terraform — generation produces valid multi-cloud
 HCL; review emits structured `SECURE`/`INSECURE` findings with real `AVD-*` (tfsec) rule IDs. It
 is exported to **Q4_K_M (~4.4 GB)** and runs on an 8 GB GPU. It ships as an optional **quality**
-model: place the `.gguf` in `services/analyzer-api/models/` and select it with
-`TERRAMIND_GGUF_MODEL=<path>`. The **1.5 B remains the default** (small, CPU-friendly), and the
-deterministic 66-rule analyzer stays the security authority — the model's review output is
-explanation, not a guarantee.
+model: place the `.gguf` in `services/analyzer-api/models/` and pick it with
+**`TerraMind: Select Model`** (or `TERRAMIND_GGUF_MODEL=<path>`). The **1.5 B remains the
+default** (small, CPU-friendly), and the deterministic 66-rule analyzer stays the security
+authority — the model's review output is explanation, not a guarantee. The portable bundle adds
+GPU acceleration in place with `enable-gpu.bat` (no separate download).
 
 ---
 
@@ -77,9 +95,13 @@ explanation, not a guarantee.
 - **Analyze** a workspace: 66 static rules across general Terraform hygiene and AWS/Azure/GCP,
   `aws-rubric-v2` evidence-scored security/reliability/maintainability ratings, prioritized
   recommendations, and Problems diagnostics.
+- **Estimate cost**: a static, region-aware monthly list-price estimate (AWS/Azure/GCP) with a
+  billing basis, unit price and confidence per line, and an explicit list of resources it cannot
+  price — an estimate, not a quote.
 - **Generate**: a deterministic **scaffolder** (valid, secure AWS Terraform from a resource
-  inventory, no model) plus a **local generative model** for freeform prompts, with preview and
-  explicit save, and one bounded parser/provider-feedback retry.
+  inventory, no model — now including **RDS** and **EKS**) plus a **local generative model** for
+  freeform prompts, with preview and explicit save, and one bounded parser/provider-feedback
+  retry.
 - **Repair**: propose a full-file fix for a `.tf` document from TerraMind diagnostics, shown as a
   diff, applied only after approval.
 - Everything stays **local**: the analyzer binds to `127.0.0.1`, generation runs on CPU (this
@@ -144,7 +166,8 @@ branch); this public repository publishes only `main` — see
 
 TerraMind **never deploys infrastructure** and must never run `terraform apply`. Findings are
 static heuristics tagged with evidence; they are not guarantees about runtime security, uptime,
-scalability, or cost. Generated drafts are parsed and receive static security rules before
+scalability, or cost — the cost figure is a **static list-price estimate, not a quote**.
+Generated drafts are parsed and receive static security rules before
 preview; optional provider validation runs only against a pre-initialised cache in a scratch
 directory, and may execute locally installed provider plugins — enable it only for a workspace you
 trust. `validate` may run provider plugins; TerraMind never runs `init`, `plan`, or `apply`.
