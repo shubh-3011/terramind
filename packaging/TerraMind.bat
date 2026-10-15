@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title TerraMind Beta 1
+title TerraMind Beta 2
 set "ROOT=%~dp0"
 set "ANALYZER=%ROOT%analyzer"
 set "MODELDIR=%USERPROFILE%\.terramind\models"
@@ -10,7 +10,7 @@ rem CDN-backed, resumable and versioned; curl's -C - flag resumes a partial down
 set "MODEL_URL=https://huggingface.co/shubh-3011/terramind-qwen2.5-coder-1.5b-terraform/resolve/main/terramind-qwen2.5-coder-v2-merged-Q4_K_M.gguf"
 
 echo ============================================================
-echo   TerraMind Beta 1
+echo   TerraMind Beta 2
 echo   A local Terraform assistant for your desktop.
 echo ============================================================
 echo.
@@ -34,16 +34,33 @@ if not exist "%MODEL%" (
   echo [1/3] Local model found.
 )
 
-rem Point the analyzer at the downloaded model. The beta ships a CPU-only
-rem llama-cpp-python build, so no layers are offloaded to a GPU.
+rem Point the analyzer at the downloaded model.
 set "PYTHONNOUSERSITE=1"
 set "TERRAMIND_MODELS_DIR=%MODELDIR%"
 set "TERRAMIND_GGUF_MODEL=%MODEL%"
-set "TERRAMIND_GGUF_N_GPU_LAYERS=0"
 set "TERRAMIND_GGUF_N_CTX=8192"
 set "TERRAMIND_GGUF_MAX_TOKENS=2048"
 set "TERRAMIND_GGUF_REPEAT_PENALTY=1.2"
 set "TERRAMIND_GGUF_TEMPERATURE=0.1"
+
+rem Offload to the GPU only when BOTH a CUDA-enabled llama-cpp-python is bundled
+rem (run enable-gpu.bat once to add it) AND an NVIDIA GPU is present. The stock
+rem beta bundle is CPU-only, so the default here is 0 GPU layers.
+set "TERRAMIND_GGUF_N_GPU_LAYERS=0"
+set "TM_CUDA_DLL="
+for %%F in ("%ANALYZER%\runtime\Lib\site-packages\llama_cpp\lib\ggml-cuda*.dll") do set "TM_CUDA_DLL=%%F"
+if not defined TM_CUDA_DLL goto tm_cpu_only
+where nvidia-smi >nul 2>&1
+if errorlevel 1 goto tm_cuda_no_gpu
+set "TERRAMIND_GGUF_N_GPU_LAYERS=-1"
+echo       GPU acceleration: enabled ^(CUDA llama.cpp + NVIDIA GPU detected^).
+goto tm_gpu_done
+:tm_cuda_no_gpu
+echo       CUDA llama.cpp is bundled but no NVIDIA GPU was detected; using the CPU.
+goto tm_gpu_done
+:tm_cpu_only
+echo       Running on the CPU ^(run enable-gpu.bat to add CUDA acceleration^).
+:tm_gpu_done
 
 rem [2/3] Start the bundled analyzer in a minimized window, then poll /health
 rem until it answers (up to ~60s) before opening the app.

@@ -1,4 +1,4 @@
-TerraMind Beta 1 - Windows x64
+TerraMind Beta 2 - Windows x64
 ==============================
 
 A local AI assistant for Terraform, built into a desktop editor (a Code-OSS fork).

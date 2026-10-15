@@ -12,6 +12,7 @@ the build script copies these files into the assembled bundle.
 | `TerraMind.bat` | Launcher shipped in the ZIP. Downloads the GGUF on first run (Hugging Face), starts the analyzer, waits on `/health`, opens the app. |
 | `readme-first.txt` | End-user readme. Copied into the bundle as `README-FIRST.txt`. |
 | `analyzer/run-analyzer.bat` | Starts the bundled portable Python + uvicorn with `PYTHONNOUSERSITE=1`. |
+| `enable-gpu.bat` | Optional: swaps the bundled CPU `llama-cpp-python` wheel for the CUDA build so the launcher can offload to an NVIDIA GPU. |
 | `build-portable.ps1` | Assembles the full bundle from the built app + analyzer sources, then optionally zips it. |
 | `README.md` | This file. |
 
@@ -20,7 +21,7 @@ the build script copies these files into the assembled bundle.
 The assembled ZIP unzips into one self-contained folder:
 
 ```
-TerraMind-beta1-win32-x64-full/
+TerraMind-beta2-win32-x64/
   TerraMind.exe            desktop app (Code-OSS workbench)
   resources/               app + the terramind-core extension
   *.dll, *.pak, locales/   Electron/Chromium runtime files
@@ -71,7 +72,7 @@ Run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build-portable.ps1
-# add -Zip to also produce TerraMind-beta1-win32-x64-full.zip
+# add -Zip to also produce TerraMind-beta2-win32-x64.zip
 # override locations:
 #   -SourceApp   D:\build\VSCode-win32-x64
 #   -PythonSource D:\Python313
@@ -106,12 +107,36 @@ curl.exe -s http://127.0.0.1:8010/health      # -> {"status":"ok"}
 
 ## Shipping
 
-Upload `TerraMind-beta1-win32-x64-full.zip` as a release asset. The model lives
+Upload `TerraMind-beta2-win32-x64.zip` as a release asset. The model lives
 on Hugging Face, so no release asset is needed for it, which keeps each release
 asset under GitHub's 2 GB per-file limit.
 
-## GPU variant (planned)
+## GPU acceleration (opt-in, no separate download)
 
-Ship a separate asset with the CUDA `llama-cpp-python` build and set
-`TERRAMIND_GGUF_N_GPU_LAYERS=-1`. Keep it separate because the CUDA build is
-~1.9 GB.
+The stock bundle is CPU-only so it runs anywhere. GPU acceleration is **added in
+place** rather than shipped as a second asset:
+
+1. Run **`enable-gpu.bat`** from the unzipped folder. It replaces the bundled
+   `llama-cpp-python` wheel with the CUDA build (from the `abetlen` cu124 index,
+   falling back to cu122).
+2. Start TerraMind normally. `TerraMind.bat` checks for the CUDA libraries
+   (`llama_cpp/lib/ggml-cuda*.dll`) **and** for `nvidia-smi`, and only then sets
+   `TERRAMIND_GGUF_N_GPU_LAYERS=-1`. Otherwise it stays on the CPU.
+
+This keeps every release asset small (no ~1.9 GB CUDA runtime to upload or to
+make users download) while still giving GPU users full offload. CPU users are
+unaffected.
+
+Why not a separate GPU ZIP: the CUDA build duplicates the whole Python runtime
+and triples the download for everyone, when a one-time in-place wheel swap is
+enough.
+
+### Multi-cloud provider validation
+
+`terraform validate` can only run offline against providers already cached in a
+workspace (`.terraform/providers`). The eval workspace in `.build/generated-validation`
+carries **only `hashicorp/aws`**, so provider-level results in the evaluation
+report cover AWS resources only — a multi-cloud draft will report
+`provider_validation: failed` purely because Azure/GCP plugins are absent, not
+because the HCL is wrong. Parsing and the deterministic analyzer are
+provider-agnostic and are the cross-cloud signal.
