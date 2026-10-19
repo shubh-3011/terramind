@@ -68,7 +68,7 @@ $ErrorActionPreference = "Stop"
 # ---------------------------------------------------------------------------
 $PackagingDir = $PSScriptRoot
 $RepoRoot     = Split-Path $PackagingDir -Parent
-$BundleName   = "TerraMind-beta2-win32-x64"
+$BundleName   = "TerraMind-beta4-win32-x64"
 
 if (-not $SourceApp) {
     $SourceApp = Join-Path (Split-Path $RepoRoot -Parent) "VSCode-win32-x64"
@@ -221,6 +221,10 @@ Copy-Item (Join-Path $PackagingDir "enable-gpu.bat")          $OutputDir -Force
 $BundleModels = Join-Path $BundleAnalyzer "models"
 New-Item -ItemType Directory -Path $BundleModels -Force | Out-Null
 Copy-Item (Join-Path $RepoRoot "models\terraform-risk-v1.json") (Join-Path $BundleModels "terraform-risk-v1.json") -Force
+
+# Ship the demo workspace so "Analyze Demo Fixture" works on a fresh machine with
+# zero setup (previously it pointed at one developer's absolute path).
+Copy-Item (Join-Path $PackagingDir "demo-fixture") (Join-Path $BundleAnalyzer "demo-fixture") -Recurse -Force
 
 # ---------------------------------------------------------------------------
 # 7. Report the result, then optionally zip it for release.

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { AnalyzerLauncher, resolveDemoFixture } from './analyzerLauncher';
 import { openGenerateWizard } from './generateView';
 import { showReport } from './reportView';
 
@@ -211,6 +212,20 @@ export function activate(context: vscode.ExtensionContext): void {
 	};
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.checkAnalyzer', () => checkAnalyzer(true)));
 
+	// Start (or reuse) the local analysis service so that opening the app is
+	// enough: no TerraMind.bat, no separate console window to keep alive.
+	const launcher = new AnalyzerLauncher({
+		extensionPath: context.extensionPath,
+		analyzerUrl: vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000'),
+		output
+	});
+	context.subscriptions.push(launcher);
+	void launcher.ensureRunning().then((ready) => {
+		if (ready) {
+			void checkAnalyzer(false);
+		}
+	});
+
 	selectedModelId = context.workspaceState.get<string>('terramind.modelId');
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.selectModel', async () => {
 		const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
@@ -254,9 +269,10 @@ export function activate(context: vscode.ExtensionContext): void {
 	// Analyze a local fixture folder server-side. Unlike Analyze Workspace this needs
 	// no browser folder picker, so it works in every browser (e.g. Brave).
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.analyzeDemo', async () => {
-		const demoPath = vscode.workspace.getConfiguration('terramind').get<string>('demoWorkspacePath', '').trim();
+		const configuredDemo = vscode.workspace.getConfiguration('terramind').get<string>('demoWorkspacePath', '').trim();
+		const demoPath = configuredDemo || resolveDemoFixture(context.extensionPath);
 		if (!demoPath) {
-			await vscode.window.showErrorMessage(vscode.l10n.t('Set "terramind.demoWorkspacePath" to a local Terraform folder first.'));
+			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind: no demo workspace found. Set "terramind.demoWorkspacePath" to a local Terraform folder.'));
 			return;
 		}
 		try {

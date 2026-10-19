@@ -13,6 +13,7 @@
 		"ui"
 	],
 	"activationEvents": [
+		"onStartupFinished",
 		"onCommand:terramind.analyzeWorkspace",
 		"onCommand:terramind.generateInfrastructure",
 		"onCommand:terramind.generateInfrastructureWizard",
@@ -119,9 +120,14 @@
 					"default": "http://127.0.0.1:8000",
 					"description": "%configuration.analyzerUrl%"
 				},
+				"terramind.analyzerCommand": {
+					"type": "string",
+					"default": "",
+					"description": "%configuration.analyzerCommand%"
+				},
 				"terramind.demoWorkspacePath": {
 					"type": "string",
-					"default": "C:\\Users\\shubh\\Downloads\\terramind\\services\\analyzer-api\\tests\\fixtures\\insecure",
+					"default": "",
 					"description": "%configuration.demoWorkspacePath%"
 				},
 				"terramind.generationModel": {

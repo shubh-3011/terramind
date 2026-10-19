@@ -16,6 +16,7 @@
 	"viewsWelcome.dashboard": "No analysis results yet.\n[Analyze Workspace](command:terramind.analyzeWorkspace)\n[Generate Infrastructure (Guided)](command:terramind.generateInfrastructureWizard)\n[Open Report](command:terramind.openReport)",
 	"configuration.title": "TerraMind",
 	"configuration.analyzerUrl": "Base URL for the local TerraMind analyzer service.",
+	"configuration.analyzerCommand": "Optional command to start the analyzer yourself. Leave empty to let TerraMind start the bundled analyzer automatically.",
 	"configuration.generationModel": "Model name already installed in the local Ollama instance.",
 	"configuration.generationEngine": "Local generation engine used by the analyzer: auto selects the best available engine, ollama uses your local Ollama instance, transformers uses the bundled in-process model, and gguf loads a local .gguf file.",
 	"configuration.ggufModelPath": "Absolute path to a local .gguf model file for the bundled gguf generation engine. Used by the analyzer only when the generation engine is set to gguf.",
