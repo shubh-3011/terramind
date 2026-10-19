@@ -11,6 +11,43 @@ import { showReport } from './reportView';
 /** The GGUF model id selected via `TerraMind: Select Model`, or undefined for the default. */
 let selectedModelId: string | undefined;
 
+/**
+ * Models the picker offers. Entries already on disk are selectable; the rest are
+ * shown with a download action, so the opt-in 7 B is reachable without leaving
+ * the app (the previous picker only listed files that already existed).
+ */
+interface ModelCatalogEntry {
+	readonly id: string;
+	readonly label: string;
+	readonly detail: string;
+	readonly sizeMb: number;
+	readonly url: string;
+}
+
+const MODEL_CATALOG: readonly ModelCatalogEntry[] = [
+	{
+		id: 'terramind-qwen2.5-coder-v2-merged-Q4_K_M.gguf',
+		label: 'TerraMind 1.5B - default (fast, CPU-friendly)',
+		detail: 'Qwen2.5-Coder-1.5B fine-tune, Q4_K_M, about 940 MB. Runs on any laptop.',
+		sizeMb: 940,
+		url: 'https://huggingface.co/shubh-3011/terramind-qwen2.5-coder-1.5b-terraform/resolve/main/terramind-qwen2.5-coder-v2-merged-Q4_K_M.gguf',
+	},
+	{
+		id: 'terramind-7b-multitask-Q4_K_M.gguf',
+		label: 'TerraMind 7B - quality (needs ~8 GB VRAM)',
+		detail: 'Qwen2.5-Coder-7B multi-task (generate + review), Q4_K_M, about 4.7 GB. Better drafts, slower.',
+		sizeMb: 4683,
+		url: 'https://huggingface.co/shubh-3011/terramind-7b-terraform/resolve/main/terramind-7b-multitask-Q4_K_M.gguf',
+	},
+];
+
+type ModelPickItem = vscode.QuickPickItem & {
+	readonly action: 'select' | 'download';
+	readonly modelId: string;
+	readonly url?: string;
+	readonly sizeMb?: number;
+};
+
 export interface AnalysisResult {
 	readonly terraform_file_count: number;
 	readonly parsed_file_count: number;
@@ -227,6 +264,35 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 
 	selectedModelId = context.workspaceState.get<string>('terramind.modelId');
+
+	// A clickable model switcher in the status bar, like a chat app's model menu.
+	const modelStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+	modelStatus.command = 'terramind.selectModel';
+	modelStatus.name = 'TerraMind model';
+	context.subscriptions.push(modelStatus);
+	const prettyModelName = (id: string | null | undefined): string => id
+		? id.replace(/\.gguf$/i, '').replace(/^terramind-/i, '').replace(/-Q4_K_M$/i, '')
+		: vscode.l10n.t('default');
+	const updateModelStatus = (activeId: string | null | undefined): void => {
+		modelStatus.text = `$(chip) TerraMind: ${prettyModelName(activeId)}`;
+		modelStatus.tooltip = vscode.l10n.t('Click to choose the local generation model');
+		modelStatus.show();
+	};
+	updateModelStatus(selectedModelId);
+	const refreshModelStatus = async (): Promise<void> => {
+		try {
+			const url = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
+			const response = await fetch(`${url}/v1/models`);
+			if (response.ok) {
+				const body = await response.json() as { active_id?: string | null };
+				updateModelStatus(body.active_id);
+			}
+		} catch {
+			/* the analyzer is not up yet */
+		}
+	};
+	void refreshModelStatus();
+
 	context.subscriptions.push(vscode.commands.registerCommand('terramind.selectModel', async () => {
 		const analyzerUrl = vscode.workspace.getConfiguration('terramind').get<string>('analyzerUrl', 'http://127.0.0.1:8000');
 		let payload: { active_id?: string | null; models?: Array<{ id: string; name: string; size_mb?: number | null; active?: boolean }> } | undefined;
@@ -240,29 +306,74 @@ export function activate(context: vscode.ExtensionContext): void {
 			await vscode.window.showErrorMessage(vscode.l10n.t('TerraMind: could not list models ({0}). Is the analyzer running?', String(error)));
 			return;
 		}
+
 		const models = payload?.models ?? [];
-		if (!models.length) {
-			await vscode.window.showWarningMessage(vscode.l10n.t('TerraMind: no GGUF models found. Put a .gguf in the analyzer models directory.'));
+		const activeId = payload?.active_id ?? selectedModelId;
+		const installedIds = new Set(models.map((entry) => entry.id));
+
+		// Installed models are selectable; catalog entries that are not on disk offer a download.
+		const items: ModelPickItem[] = models.map((entry) => ({
+			label: `${entry.id === activeId ? '$(check) ' : '$(chip) '}${entry.name}`,
+			description: entry.size_mb ? `${entry.size_mb.toFixed(0)} MB · installed` : vscode.l10n.t('installed'),
+			detail: entry.id,
+			action: 'select',
+			modelId: entry.id,
+		}));
+		for (const candidate of MODEL_CATALOG) {
+			if (installedIds.has(candidate.id)) {
+				continue;
+			}
+			items.push({
+				label: `$(cloud-download) ${candidate.label}`,
+				description: vscode.l10n.t('not installed · {0} MB', candidate.sizeMb),
+				detail: candidate.detail,
+				action: 'download',
+				modelId: candidate.id,
+				url: candidate.url,
+				sizeMb: candidate.sizeMb,
+			});
+		}
+		if (!items.length) {
+			await vscode.window.showWarningMessage(vscode.l10n.t('TerraMind: no models available.'));
 			return;
 		}
-		const picked = await vscode.window.showQuickPick<vscode.QuickPickItem & { id: string }>(
-			models.map((entry) => ({
-				label: (selectedModelId === entry.id ? '$(check) ' : '') + entry.name,
-				description: entry.size_mb ? `${entry.size_mb} MB` : '',
-				detail: entry.id,
-				id: entry.id
-			})),
-			{
-				title: vscode.l10n.t('TerraMind: select the local generation model'),
-				placeHolder: vscode.l10n.t('Small model = fast/CPU-friendly; larger model = higher quality (needs a GPU)')
-			}
-		);
+
+		const picked = await vscode.window.showQuickPick<ModelPickItem>(items, {
+			title: vscode.l10n.t('TerraMind: choose a model'),
+			placeHolder: vscode.l10n.t('1.5B = fast on any laptop · 7B = better drafts, needs a GPU'),
+			matchOnDescription: true,
+			matchOnDetail: true,
+		});
 		if (!picked) {
 			return;
 		}
-		selectedModelId = picked.id;
+
+		if (picked.action === 'download') {
+			const downloadLabel = vscode.l10n.t('Download');
+			const confirm = await vscode.window.showInformationMessage(
+				vscode.l10n.t('Download {0}? It is a one-time ~{1} MB download.', picked.modelId, picked.sizeMb ?? 0),
+				downloadLabel,
+				vscode.l10n.t('Cancel')
+			);
+			if (confirm !== downloadLabel) {
+				return;
+			}
+			const destination = launcher.modelPath(picked.modelId);
+			if (!destination || !picked.url) {
+				await vscode.window.showWarningMessage(vscode.l10n.t('TerraMind: downloads are only available in the desktop app.'));
+				return;
+			}
+			const downloaded = await launcher.downloadModel(picked.url, destination, picked.modelId);
+			if (!downloaded) {
+				return;
+			}
+		}
+
+		selectedModelId = picked.modelId;
 		await context.workspaceState.update('terramind.modelId', selectedModelId);
-		await vscode.window.showInformationMessage(vscode.l10n.t('TerraMind: generation will use {0}.', picked.id));
+		updateModelStatus(selectedModelId);
+		await vscode.window.showInformationMessage(vscode.l10n.t('TerraMind: generation will use {0}.', prettyModelName(picked.modelId)));
+		void refreshModelStatus();
 	}));
 	void checkAnalyzer(false);
 

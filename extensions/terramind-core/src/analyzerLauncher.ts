@@ -121,6 +121,50 @@ export class AnalyzerLauncher implements vscode.Disposable {
 		this.child = undefined;
 	}
 
+	/** Directory the analyzer scans for GGUF models. */
+	get modelsDirectory(): string {
+		return this.modelsDir();
+	}
+
+	/** Absolute path for a model file inside the models directory ('' in the browser). */
+	modelPath(id: string): string {
+		return this.node ? this.node.path.join(this.modelsDir(), id) : '';
+	}
+
+	/** Whether this environment can write files (desktop) or not (browser). */
+	get canDownload(): boolean {
+		return Boolean(this.node);
+	}
+
+	/**
+	 * Download a model file with a progress notification. Used by the model picker
+	 * so a user can fetch the opt-in 7 B without leaving the app.
+	 */
+	async downloadModel(url: string, destination: string, label: string): Promise<boolean> {
+		const fs = this.node?.fs;
+		if (!fs || !this.node) {
+			return false;
+		}
+		try {
+			fs.mkdirSync(this.node.path.dirname(destination), { recursive: true });
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: vscode.l10n.t('TerraMind: downloading {0}', label),
+				cancellable: true,
+			}, async (progress, token) => {
+				const partial = `${destination}.part`;
+				await this.download(url, partial, progress, token);
+				fs.renameSync(partial, destination);
+			});
+			this.options.output.appendLine(`[launcher] downloaded ${label} to ${destination}`);
+			return true;
+		} catch (error) {
+			this.options.output.appendLine(`[launcher] download of ${label} failed: ${String(error)}`);
+			await vscode.window.showWarningMessage(vscode.l10n.t('TerraMind: the download of {0} did not finish.', label));
+			return false;
+		}
+	}
+
 	/** Ensure the analyzer is reachable, starting it when possible. Returns true when /health answers. */
 	async ensureRunning(): Promise<boolean> {
 		if (await this.isHealthy()) {
