@@ -14,24 +14,31 @@ cloud API, no account.
 
 ## Download & run (Windows x64 beta)
 
-**TerraMind Beta 1** — a portable, self-contained build. No Python, no Node, no Ollama, no GPU.
+A portable, self-contained build. No Python, no Node, no Ollama, no GPU required.
 
-1. Download **`TerraMind-beta1-win32-x64-full.zip`** from the
+1. Download **`TerraMind-beta4-win32-x64.zip`** from the
    [latest release](https://github.com/shubh-3011/terramind/releases/latest).
 2. Extract it anywhere (e.g. `D:\TerraMind`).
-3. Double-click **`TerraMind.bat`** (not `TerraMind.exe` directly).
+3. **Double-click `TerraMind.exe`.** That is the whole setup.
 
-On first launch, `TerraMind.bat` downloads the local AI model (~940 MB, once) into
-`%USERPROFILE%\.terramind\models\`, starts the analysis service, and opens the app. Later
-launches take a second or two.
+The app starts the bundled analysis service itself (no console window), shows
+`TerraMind: starting` → `TerraMind` in the status bar, and offers the local AI model
+(~940 MB, one time) as a cancellable download with a progress bar. The deterministic analyzer,
+cost estimator and scaffolder work **without** the model, so you can analyse code immediately.
+Closing the app stops the service. `TerraMind.bat` still exists as a fallback, but is no longer
+needed.
 
 Then press `Ctrl+Shift+P`:
-- **TerraMind: Analyze Demo Fixture** — works with no folder open
-- **TerraMind: Generate Infrastructure (Guided)** — e.g. `VPC 2, EC2 2, S3 bucket 1`
+- **TerraMind: Analyze Demo Fixture** — works with no folder open (a demo workspace ships in the ZIP)
+- **TerraMind: Generate Infrastructure (Guided)** — e.g. `VPC 2, EC2 2, RDS database 1, EKS cluster 1`
 - **TerraMind: Analyze Terraform Workspace** — open a `.tf` folder first
+- **TerraMind: Select Model** — switch between the bundled 1.5 B and the opt-in 7 B
+
+**Optional GPU:** run **`enable-gpu.bat`** once to swap the bundled CPU `llama-cpp-python` for the
+CUDA build; the launcher then offloads automatically when an NVIDIA GPU is present.
 
 The packaging model and model hosting (Hugging Face primary, GitHub release fallback) are documented
-in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
+in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) and [packaging/README.md](packaging/README.md).
 
 ---
 
