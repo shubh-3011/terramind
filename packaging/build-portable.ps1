@@ -215,6 +215,13 @@ Copy-Item (Join-Path $PackagingDir "readme-first.txt")        (Join-Path $Output
 Copy-Item (Join-Path $PackagingDir "analyzer\run-analyzer.bat") $BundleAnalyzer -Force
 Copy-Item (Join-Path $PackagingDir "enable-gpu.bat")          $OutputDir -Force
 
+# Ship the tiny (4.9 KB) experimental risk model, which lives at <repo>\models.
+# The GGUF is still downloaded on first run; this is a separate, non-generative
+# artifact that predictor.py could never find in the packaged layout.
+$BundleModels = Join-Path $BundleAnalyzer "models"
+New-Item -ItemType Directory -Path $BundleModels -Force | Out-Null
+Copy-Item (Join-Path $RepoRoot "models\terraform-risk-v1.json") (Join-Path $BundleModels "terraform-risk-v1.json") -Force
+
 # ---------------------------------------------------------------------------
 # 7. Report the result, then optionally zip it for release.
 # ---------------------------------------------------------------------------

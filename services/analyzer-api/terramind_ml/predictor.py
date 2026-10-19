@@ -9,7 +9,33 @@ from typing import Any
 
 from .features import FEATURE_NAMES, FEATURE_VERSION
 
-MODEL_PATH = Path(__file__).resolve().parents[3] / "models" / "terraform-risk-v1.json"
+MODEL_FILENAME = "terraform-risk-v1.json"
+
+
+def _resolve_model_path() -> Path:
+    """Locate the risk artifact in both the source tree and the packaged bundle.
+
+    Source layout:  <repo>/services/analyzer-api/terramind_ml/predictor.py -> <repo>/models/...
+    Bundle layout:  <bundle>/analyzer/terramind_ml/predictor.py            -> <bundle>/analyzer/models/...
+
+    The old code hard-coded ``parents[3]``, which is the repository root in the
+    source tree but the *parent of the bundle* once packaged, so the shipped app
+    could never find the artifact and always reported
+    "No compatible trained risk model is available."
+    """
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[3] / "models" / MODEL_FILENAME,  # source tree: <repo>/models
+        here.parents[1] / "models" / MODEL_FILENAME,  # bundle: <bundle>/analyzer/models
+        here.parents[2] / "models" / MODEL_FILENAME,  # bundle root, just in case
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+MODEL_PATH = _resolve_model_path()
 
 
 def predict_risk(features: dict[str, int], model_path: Path = MODEL_PATH) -> dict[str, Any] | None:
