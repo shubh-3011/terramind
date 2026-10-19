@@ -68,7 +68,7 @@ $ErrorActionPreference = "Stop"
 # ---------------------------------------------------------------------------
 $PackagingDir = $PSScriptRoot
 $RepoRoot     = Split-Path $PackagingDir -Parent
-$BundleName   = "TerraMind-beta4-win32-x64"
+$BundleName   = "TerraMind-beta5-win32-x64"
 
 if (-not $SourceApp) {
     $SourceApp = Join-Path (Split-Path $RepoRoot -Parent) "VSCode-win32-x64"

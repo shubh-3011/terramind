@@ -16,7 +16,7 @@ cloud API, no account.
 
 A portable, self-contained build. No Python, no Node, no Ollama, no GPU required.
 
-1. Download **`TerraMind-beta4-win32-x64.zip`** from the
+1. Download the **`TerraMind-beta*-win32-x64.zip`** asset from the
    [latest release](https://github.com/shubh-3011/terramind/releases/latest).
 2. Extract it anywhere (e.g. `D:\TerraMind`).
 3. **Double-click `TerraMind.exe`.** That is the whole setup.
