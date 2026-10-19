@@ -148,7 +148,18 @@ Write-Host "  Output       : $OutputDir"
 Write-Step "Staging clean output folder"
 if (Test-Path $OutputDir) {
     Write-Host "  Removing existing $OutputDir"
-    Remove-Item -Recurse -Force $OutputDir
+    # PowerShell 5.1 / .NET Framework cannot traverse paths longer than MAX_PATH,
+    # so a plain Remove-Item fails on deep node_modules trees such as
+    # @azure\opentelemetry-instrumentation-azure-sdk\...\W3CBaggagePropagator.js.map.
+    # The \\?\ prefix opts the .NET APIs into long-path support; rd /s /q is the
+    # fallback.
+    Remove-Item -LiteralPath ("\\?\" + $OutputDir) -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $OutputDir) {
+        & cmd.exe /c rd /s /q "$OutputDir" 2>$null
+    }
+    if (Test-Path $OutputDir) {
+        throw "Could not remove the existing output folder: $OutputDir"
+    }
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
