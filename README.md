@@ -14,12 +14,15 @@ cloud API, no account.
 
 ## Download & run (Windows x64 beta)
 
-A portable, self-contained build. No Python, no Node, no Ollama, no GPU required.
+Self-contained. No Python, no Node, no Ollama, no GPU required.
 
-1. Download the **`TerraMind-beta*-win32-x64.zip`** asset from the
-   [latest release](https://github.com/shubh-3011/terramind/releases/latest).
-2. Extract it anywhere (e.g. `D:\TerraMind`).
-3. **Double-click `TerraMind.exe`.** That is the whole setup.
+**Installer (recommended).** Download **`TerraMind-Setup-*.exe`** from the
+[latest release](https://github.com/shubh-3011/terramind/releases/latest), run it, and launch
+**TerraMind** from the Start Menu. It installs per-user (no admin rights) and registers an
+uninstaller.
+
+**Portable.** Download **`TerraMind-beta*-win32-x64.zip`** from the same release, extract it
+anywhere (e.g. `D:\TerraMind`), and double-click `TerraMind.exe`.
 
 The app starts the bundled analysis service itself (no console window), shows
 `TerraMind: starting` → `TerraMind` in the status bar, and offers the local AI model
