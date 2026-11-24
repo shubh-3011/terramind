@@ -105,6 +105,30 @@ $env:PYTHONNOUSERSITE="1"; $env:TERRAMIND_GGUF_N_GPU_LAYERS="0"
 curl.exe -s http://127.0.0.1:8010/health      # -> {"status":"ok"}
 ```
 
+## Installer (Inno Setup)
+
+`terramind.iss` wraps the extracted bundle in a per-user installer. It installs to
+`%LOCALAPPDATA%\Programs\TerraMind` without elevation, adds a Start Menu entry and an
+optional desktop shortcut, registers an uninstaller, and can launch the app after setup.
+
+```powershell
+winget install --id JRSoftware.InnoSetup -e --silent
+$env:TERRAMIND_BUNDLE = "C:\tm\b"     # the extracted bundle
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" packaging\terramind.iss
+# -> build\installer\TerraMind-Setup-0.1.0-beta.5.exe
+```
+
+Keep `TERRAMIND_BUNDLE` on a **short path** (for example `C:\tm\b`). The bundle
+contains 139 files whose absolute path exceeds 260 characters, and Windows long
+paths are disabled by default, so a deep source root makes the compiler stop with
+`The system cannot find the path specified`.
+
+Compression dominates the build time: 1,514 MB across 29,675 files takes about
+13 minutes with `lzma2/max`. The resulting installer is ~333 MB and installs in
+1-2 minutes. For a smaller, faster build, strip the unused Copilot extension
+(`resources\app\extensions\copilot`, 21,324 files) and the source maps (`*.map`,
+8,953 files) from the bundle first; that leaves ~840 MB and about 4 minutes.
+
 ## Shipping
 
 Upload `TerraMind-beta2-win32-x64.zip` as a release asset. The model lives
